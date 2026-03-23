@@ -15,9 +15,9 @@ export default function Home() {
             <a href="#parameters" className="hover:text-orange-500 transition-colors">Parameters</a>
             <a href="#tech" className="hover:text-orange-500 transition-colors">Technology</a>
           </div>
-          <button className="rounded-full bg-zinc-900 px-6 py-2 text-sm font-semibold text-white transition-all hover:bg-orange-600 dark:bg-zinc-100 dark:text-black dark:hover:bg-orange-400 shadow-md cursor-pointer">
+          <a href="/game" className="rounded-full bg-zinc-900 px-6 py-2 text-sm font-semibold text-white transition-all hover:bg-orange-600 dark:bg-zinc-100 dark:text-black dark:hover:bg-orange-400 shadow-md cursor-pointer">
             Enter Simulation
-          </button>
+          </a>
         </div>
       </nav>
 
