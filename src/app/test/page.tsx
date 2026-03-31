@@ -91,7 +91,7 @@ export default function TestDashboard() {
 
       <header className="text-center mb-16 relative z-10">
         <h1 className="text-5xl md:text-7xl font-bold bg-linear-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent mb-4 tracking-tight">
-          Panel de Pruebas R3F
+          Panel de Pruebas Babylon
         </h1>
         <p className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto border-b border-white/10 pb-6">
           Métricas de rendimiento para investigación de grado: Plataformas Web 3D para Psicología.
