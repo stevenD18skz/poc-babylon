@@ -1,272 +1,157 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import * as ReactDOM from 'react-dom'
+import { useEffect, useRef, useCallback } from 'react'
+import {
+  Scene,
+  Engine,
+  SceneInstrumentation,
+  Mesh,
+  AbstractMesh,
+} from '@babylonjs/core'
 
-// --- SHIM PARA COMPATIBILIDAD CON REACT 19 ---
-// Algunas librerías como Babylon Inspector aún buscan ReactDOM.render que fue eliminado en React 19.
-if (typeof window !== 'undefined') {
-    const rd = ReactDOM as any;
-    if (!rd.render || (rd.default && !rd.default.render)) {
-        import('react-dom/client').then(({ createRoot }) => {
-            const renderShim = (element: any, container: any) => {
-                const root = createRoot(container);
-                root.render(element);
-                return root;
-            };
-            if (rd.default) rd.default.render = renderShim;
-            rd.render = renderShim;
-        }).catch(err => console.error('Error al cargar el shim de React 19:', err));
+// ---------------------------------------------------------------------------
+// Contar triángulos activos (SmartArray tiene .forEach, no .reduce)
+// ---------------------------------------------------------------------------
+function countTriangles(scene: Scene): number {
+  let total = 0
+  const active = scene.getActiveMeshes()
+  active.forEach((m: AbstractMesh) => {
+    if (m instanceof Mesh && m.geometry) {
+      const idx = m.geometry.getIndices()
+      if (idx) total += Math.floor(idx.length / 3)
     }
-}
-// --- FIN DEL SHIM ---
-
-import { useControls } from 'leva'
-import * as BABYLON from '@babylonjs/core'
-import { GridMaterial } from '@babylonjs/materials'
-
-interface DebugStats {
-  fps: number
-  ms: number
-  mb: number
+  })
+  return total
 }
 
-// Hook para crear el contexto de debug
-export function useDebugControls() {
-    return useControls('Debug', {
-        showAxes: true,
-        showGrid: true,
-        showStats: true,
-        statPanel: { 
-            value: 0, 
-            options: { 'FPS': 0, 'MS (Latencia)': 1, 'MB (Memoria RAM)': 2 },
-            label: 'Métrica Stats.js'
-        },
-        showInspector: false,
-        showGizmo: true,
-        triangles: {
-            value: 1_000,
-            min: 1_000,
-            max: 32_000,
-            step: 1_000,
-            label: 'Triángulos'
-        }
+// ---------------------------------------------------------------------------
+// Estimar VRAM (geometrías + texturas)
+// ---------------------------------------------------------------------------
+function estimateVRAM(scene: Scene): number {
+  let bytes = 0
+  const seenGeo = new Set<string>()
+  const seenTex = new Set<string>()
+
+  scene.meshes.forEach((mesh) => {
+    if (!(mesh instanceof Mesh)) return
+    const geo = mesh.geometry
+    if (geo && !seenGeo.has(geo.id)) {
+      seenGeo.add(geo.id)
+      geo.getVerticesDataKinds().forEach((kind) => {
+        const data = geo.getVerticesData(kind)
+        if (data) bytes += data.length * 4
+      })
+      const idx = geo.getIndices()
+      if (idx) bytes += idx.length * 4
+    }
+    mesh.material?.getActiveTextures().forEach((tex) => {
+      if (!seenTex.has(tex.uid)) {
+        seenTex.add(tex.uid)
+        const s = tex.getSize()
+        let tb = (s?.width ?? 0) * (s?.height ?? 0) * 4
+        if ((tex as any).generateMipMaps) tb *= 1.33
+        bytes += tb
+      }
     })
+  })
+
+  return bytes / (1024 * 1024)
 }
 
-interface StatsPanel {
-  fps: HTMLDivElement
-  ms: HTMLDivElement
-  mb: HTMLDivElement
-  container: HTMLDivElement
-}
-
-class DebugStatsManager {
-  private lastTime = performance.now()
-  private frames = 0
-  private fps = 60
-  private ms = 0
-  private lastMemory = 0
-  private statsPanel: StatsPanel | null = null
-  private statsMode = 0
-
-  constructor() {
-    this.createStatsPanel()
-  }
-
-  private createStatsPanel() {
-    const container = document.createElement('div')
-    container.style.cssText = `
-      position: fixed;
-      top: 64px;
-      left: 16px;
-      background: rgba(0, 0, 0, 0.7);
-      color: #0f0;
-      font-family: 'Courier New', monospace;
-      font-size: 12px;
-      padding: 8px;
-      border-radius: 4px;
-      z-index: 100;
-      min-width: 80px;
-      text-align: center;
-      border: 1px solid #0f0;
-      backdrop-filter: blur(4px);
-    `
-
-    const fps = document.createElement('div')
-    const ms = document.createElement('div')
-    const mb = document.createElement('div')
-
-    container.appendChild(fps)
-    container.appendChild(ms)
-    container.appendChild(mb)
-    document.body.appendChild(container)
-
-    this.statsPanel = { fps, ms, mb, container }
-  }
-
-  update(engine: BABYLON.Engine) {
-    const now = performance.now()
-    this.ms = now - this.lastTime
-    this.lastTime = now
-
-    this.frames++
-    if (this.frames >= 30) {
-      this.fps = Math.round((1000 * this.frames) / (now - this.lastTime))
-      this.frames = 0
-    }
-
-    // Memoria estimada (si está disponible)
-    if (performance.memory) {
-      this.lastMemory = Math.round(performance.memory.usedJSHeapSize / 1048576)
-    }
-
-    this.updateDisplay()
-  }
-
-  private updateDisplay() {
-    if (!this.statsPanel) return
-
-    switch (this.statsMode) {
-      case 0:
-        this.statsPanel.fps.textContent = `FPS\n${this.fps}`
-        this.statsPanel.ms.innerHTML = ''
-        this.statsPanel.mb.innerHTML = ''
-        break
-      case 1:
-        this.statsPanel.ms.textContent = `MS\n${this.ms.toFixed(2)}`
-        this.statsPanel.fps.innerHTML = ''
-        this.statsPanel.mb.innerHTML = ''
-        break
-      case 2:
-        this.statsPanel.mb.textContent = `MB\n${this.lastMemory}`
-        this.statsPanel.fps.innerHTML = ''
-        this.statsPanel.ms.innerHTML = ''
-        break
-    }
-  }
-
-  setMode(mode: number) {
-    this.statsMode = mode
-  }
-
-  hide() {
-    if (this.statsPanel) {
-      this.statsPanel.container.style.display = 'none'
-    }
-  }
-
-  show() {
-    if (this.statsPanel) {
-      this.statsPanel.container.style.display = 'block'
-    }
-  }
-
-  dispose() {
-    if (this.statsPanel) {
-      this.statsPanel.container.remove()
-    }
-  }
-}
-
+// ---------------------------------------------------------------------------
+// Componente: solo un botón "Exportar CSV"
+// ---------------------------------------------------------------------------
 interface DebugToolsProps {
-  scene: BABYLON.Scene
-  engine: BABYLON.Engine
+  scene: Scene
+  engine: Engine
+  title?: string
+  entityCount?: number
 }
 
-export default function DebugTools({ scene, engine }: DebugToolsProps) {
-    const { showAxes, showGrid, showStats, statPanel, showInspector, showGizmo } = useDebugControls()
-    const statsManagerRef = useRef<DebugStatsManager | null>(null)
-    const gridRef = useRef<BABYLON.Mesh | null>(null)
-    const axesRef = useRef<BABYLON.AxesViewer | null>(null)
-    const gizmoRef = useRef<BABYLON.GizmoManager | null>(null)
+export default function DebugTools({ scene, engine, title, entityCount }: DebugToolsProps) {
+  const siRef = useRef<SceneInstrumentation | null>(null)
 
-    // Inicializar Stats Manager
-    useEffect(() => {
-        if (showStats && !statsManagerRef.current) {
-            statsManagerRef.current = new DebugStatsManager()
-        } else if (!showStats && statsManagerRef.current) {
-            statsManagerRef.current.dispose()
-            statsManagerRef.current = null
-        }
-    }, [showStats])
+  // Crear instrumentación al montar
+  useEffect(() => {
+    const si = new SceneInstrumentation(scene)
+    si.captureFrameTime = true
+    si.captureDrawCalls = true
+    siRef.current = si
 
-    // Actualizar stats mode
-    useEffect(() => {
-        if (statsManagerRef.current) {
-            statsManagerRef.current.setMode(statPanel)
-        }
-    }, [statPanel])
+    return () => {
+      si.dispose()
+      siRef.current = null
+    }
+  }, [scene])
 
-    // Mostrar/Ocultar Stats
-    useEffect(() => {
-        if (statsManagerRef.current) {
-            if (showStats) {
-                statsManagerRef.current.show()
-            } else {
-                statsManagerRef.current.hide()
-            }
-        }
-    }, [showStats])
+  // Función de exportación
+  const handleExportCSV = useCallback(() => {
+    const si = siRef.current
 
-    // Actualizar stats en cada frame
-    useEffect(() => {
-        if (!statsManagerRef.current) return
+    const fpsAvg = engine.getFps().toFixed(2)
+    const cpuMs = si
+      ? si.frameTimeCounter.lastSecAverage.toFixed(2)
+      : '0.00'
+    const gpuMs = '0.00'
+    const drawCalls = si ? si.drawCallsCounter.current : 0
+    const triangles = countTriangles(scene)
+    const geometries = scene.geometries.length
+    const textures = scene.textures.length
+    const shaders = Object.keys((engine as any)._compiledEffects ?? {}).length
+    const memMB = (performance as any).memory
+      ? ((performance as any).memory.usedJSHeapSize / 1048576).toFixed(2)
+      : '0.00'
+    const vramMB = estimateVRAM(scene).toFixed(2)
 
-        const observer = scene.onBeforeRenderObservable.add(() => {
-            statsManagerRef.current?.update(engine)
-        })
+    // Construir el contenido CSV
+    const lines: string[] = []
 
-        return () => {
-            scene.onBeforeRenderObservable.remove(observer)
-        }
-    }, [scene, engine])
+    if (entityCount !== undefined) {
+      lines.push(`${entityCount.toLocaleString()} entidades`)
+      lines.push('')
+    }
 
-    // Crear/Destruir Grid
-    useEffect(() => {
-        if (showGrid && !gridRef.current) {
-            const grid = BABYLON.MeshBuilder.CreateGround('grid', { width: 20, height: 20, subdivisions: 20 }, scene)
-            const gridMat = new GridMaterial('gridMat', scene)
-            grid.material = gridMat
-            gridRef.current = grid
-        } else if (!showGrid && gridRef.current) {
-            gridRef.current.dispose()
-            gridRef.current = null
-        }
-    }, [showGrid, scene])
+    lines.push(
+      'Escena,FPS Promedio,GPU (ms),CPU (ms),Draw Calls,Triangulos,Geometrias,Texturas,Shaders,Lineas,Puntos,Memoria RAM (MB),VRAM Estimada (MB)'
+    )
+    lines.push(
+      `Metricas Actuales,${fpsAvg},${gpuMs},${cpuMs},${drawCalls},${triangles},${geometries},${textures},${shaders},0,0,${memMB},${vramMB}`
+    )
 
-    // Crear/Destruir Axes
-    useEffect(() => {
-        if (showAxes && !axesRef.current) {
-            axesRef.current = new BABYLON.AxesViewer(scene, 10)
-        } else if (!showAxes && axesRef.current) {
-            axesRef.current.dispose()
-            axesRef.current = null
-        }
-    }, [showAxes, scene])
+    const csvText = lines.join('\n')
 
-    useEffect(() => {
-        if (showInspector) {
-            import('@babylonjs/inspector').then(({ Inspector }) => {
-                Inspector.Show(scene, {
-                    embedMode: true,
-                    globalRoot: document.body as any
-                })
-            })
-        }
-    }, [showInspector, scene])
+    // Descargar usando Blob
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `metricas_escena_${title ?? 'babylon'}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }, [scene, engine, title, entityCount])
 
-    // Crear/Destruir Gizmo
-    useEffect(() => {
-        if (showGizmo && !gizmoRef.current) {
-            const gizmoManager = new BABYLON.GizmoManager(scene)
-            gizmoRef.current = gizmoManager
-        } else if (!showGizmo && gizmoRef.current) {
-            gizmoRef.current.dispose()
-            gizmoRef.current = null
-        }
-    }, [showGizmo, scene])
-
-    return null
+  return (
+    <button
+      onClick={handleExportCSV}
+      style={{
+        position: 'fixed',
+        bottom: 16,
+        right: 16,
+        zIndex: 9999,
+        padding: '8px 16px',
+        background: '#1a1a2e',
+        color: '#00ff88',
+        border: '1px solid #00ff8855',
+        borderRadius: 6,
+        fontFamily: "'Courier New', monospace",
+        fontSize: 12,
+        cursor: 'pointer',
+        backdropFilter: 'blur(6px)',
+      }}
+    >
+      📊 Exportar CSV
+    </button>
+  )
 }
-

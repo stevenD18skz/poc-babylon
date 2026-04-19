@@ -113,8 +113,8 @@ export default function TrianglesStaticTestBabylon() {
   return (
     <main className="w-full h-screen bg-[#050505] overflow-hidden relative">
       <PerformanceOverlay title={`${COUNT} Triángulos Estáticos (Babylon)`} />
- 
-   
+      
+      {sceneState && <DebugTools scene={sceneState.scene} engine={sceneState.engine} title="triangles_static" entityCount={COUNT} />}
  
       <canvas
         ref={canvasRef}

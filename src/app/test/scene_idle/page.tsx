@@ -1,93 +1,87 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { 
-  Engine, 
-  Scene, 
-  Vector3, 
-  HemisphericLight, 
-  Color3, 
-  Color4,
+import {
   ArcRotateCamera,
-  MeshBuilder,
-  StandardMaterial
+  Color4,
+  Engine,
+  HemisphericLight,
+  Scene,
+  Vector3,
 } from '@babylonjs/core'
+
 import PerformanceOverlay from '@/components/test/PerformanceOverlay'
-import dynamic from 'next/dynamic'
-const DebugTools = dynamic(() => import('@/components/DebugTools'), { ssr: false })
-import { setState } from '@/app/game/gameState'
+import DebugTools from '@/components/DebugTools'
 
 export default function SceneIdleTest() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [sceneState, setSceneState] = useState<{ scene: Scene, engine: Engine } | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [sceneState, setSceneState] = useState<{ scene: Scene; engine: Engine } | null>(null)
 
   useEffect(() => {
-    if (!canvasRef.current) return
-    
     const canvas = canvasRef.current
-    const engine = new Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true })
-    
-    // Create the scene
+    if (!canvas) return
+
+    const engine = new Engine(canvas, true, {
+      preserveDrawingBuffer: true,
+      stencil: true,
+    })
+
     const scene = new Scene(engine)
-    scene.clearColor = Color4.FromColor3(Color3.FromHexString("#050505"), 1)
-    
-    // Setup Camera
+    scene.clearColor = new Color4(0.02, 0.02, 0.02, 1)
+
+    // Cámara equivalente a OrbitControls + cámara lateral
     const camera = new ArcRotateCamera(
-      "camera", 
-      -Math.PI / 2, 
-      Math.PI / 2.5, 
-      10, 
-      new Vector3(0, 0, 0), 
+      'camera',
+      0, // alpha
+      Math.PI / 2, // beta
+      120, // radius
+      Vector3.Zero(),
       scene
     )
+
+    camera.fov = 50 * (Math.PI / 180)
     camera.attachControl(canvas, true)
 
-    // Lighting
-    const light = new HemisphericLight("light", new Vector3(0, 1, 0), scene)
-    light.intensity = 0.7
+    // Luz suave para mantener la escena consistente
+    const light = new HemisphericLight('hemLight', new Vector3(0, 1, 0), scene)
+    light.intensity = 0.6
 
-    // Environment
+    // Entorno base. Si luego quieres un look más "forest", aquí puedes enchufar
+    // un env texture/HDR propio.
     scene.createDefaultEnvironment({
-        createGround: true,
-        groundSize: 100,
-        skyboxSize: 100,
-        groundColor: new Color3(0.02, 0.02, 0.02)
+      createGround: false,
+      createSkybox: true,
+      skyboxSize: 1000,
     })
-
-    // Central Square (Cube)
-    const box = MeshBuilder.CreateBox("box", { size: 2 }, scene)
-    const boxMaterial = new StandardMaterial("boxMat", scene)
-    boxMaterial.diffuseColor = new Color3(0.4, 0.4, 1)
-    box.material = boxMaterial
-    box.position.y = 1
-
-    // Render loop
-    engine.runRenderLoop(() => {
-      setState({ fps: engine.getFps() })
-      scene.render()
-    })
-
-    // Resize handler
-    const handleResize = () => engine.resize()
-    window.addEventListener('resize', handleResize)
 
     setSceneState({ scene, engine })
 
+    engine.runRenderLoop(() => {
+      scene.render()
+    })
+
+    const handleResize = () => {
+      engine.resize()
+    }
+
+    window.addEventListener('resize', handleResize)
+
     return () => {
       window.removeEventListener('resize', handleResize)
+      setSceneState(null)
       scene.dispose()
       engine.dispose()
     }
   }, [])
 
   return (
-    <main className="w-full h-screen bg-[#050505] overflow-hidden relative">
-      <PerformanceOverlay title="Escena Vacía con Cubo" />
-      {sceneState && <DebugTools scene={sceneState.scene} engine={sceneState.engine} />}
-      
+    <main className="w-full h-screen bg-[#050505] overflow-hidden">
+      <PerformanceOverlay title="Escena Idle (60s)" />
+      {sceneState && <DebugTools scene={sceneState.scene} engine={sceneState.engine} title="scene_idle" />}
+
       <canvas
         ref={canvasRef}
-        className="block w-full h-full outline-none touch-none"
+        className="w-full h-full block outline-none"
       />
     </main>
   )

@@ -15,12 +15,12 @@ import {
   Mesh
 } from '@babylonjs/core'
 import PerformanceOverlay from '@/components/test/PerformanceOverlay'
-import DebugTools, { useDebugControls } from '@/components/DebugTools'
+import DebugTools from '@/components/DebugTools'
 
 export default function TrianglesRotatingTest() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [sceneState, setSceneState] = useState<{ scene: Scene, engine: Engine } | null>(null)
-  const { triangles } = useDebugControls()
+  const [triangles, setTriangles] = useState(1_000)
 
   // Referencia para mantener el control de los meshes actuales y poder eliminarlos
   const currentMeshesRef = useRef<Mesh[]>([])
@@ -91,7 +91,6 @@ export default function TrianglesRotatingTest() {
         const color = Color3.FromHSV(Math.random() * 360, 0.7, 0.5)
         mat.diffuseColor = color
         mat.emissiveColor = color
-        mat.emissiveIntensity = 0.2
         cone.material = mat
 
         newMeshes.push({
@@ -119,14 +118,31 @@ export default function TrianglesRotatingTest() {
     <main className="w-full h-screen bg-[#050505] overflow-hidden relative">
       <PerformanceOverlay title={`Triángulos Rotando (${triangles})`} />
 
-      {sceneState && <DebugTools scene={sceneState.scene} engine={sceneState.engine} />}
+      {sceneState && <DebugTools scene={sceneState.scene} engine={sceneState.engine} title="triangles_rotating" entityCount={triangles} />}
 
       <canvas
         ref={canvasRef}
         className="block w-full h-full outline-none touch-none"
       />
 
-      <div className="fixed bottom-0 left-0 w-full p-8 text-white/30 text-xs pointer-events-none text-center font-mono">
+      <div style={{
+        position: 'fixed', bottom: 16, left: 16, zIndex: 9999,
+        background: 'rgba(0,0,0,0.8)', padding: '10px 16px',
+        borderRadius: 6, border: '1px solid rgba(255,255,255,0.1)',
+        fontFamily: "'Courier New', monospace", fontSize: 12, color: '#ccc',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <label>Triángulos: <strong style={{ color: '#00ff88' }}>{triangles.toLocaleString()}</strong></label>
+        <input
+          type="range"
+          min={1000} max={32000} step={1000}
+          value={triangles}
+          onChange={(e) => setTriangles(Number(e.target.value))}
+          style={{ width: 160, accentColor: '#00ff88' }}
+        />
+      </div>
+
+      <div className="fixed bottom-0 left-0 w-full p-2 text-white/20 text-xs pointer-events-none text-center font-mono">
         STRESS TEST - INDIVIDUAL MATRIX UPDATES - {triangles} OBJECTS (BABYLON ENGINE)
       </div>
     </main>
