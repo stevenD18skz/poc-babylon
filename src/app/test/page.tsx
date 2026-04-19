@@ -11,14 +11,14 @@ export default function TestDashboard() {
     },
     {
       id: 'triangles_static',
-      title: '512,000 Triángulos Estáticos',
+      title: 'Triángulos Estáticos',
       description: 'Prueba de renderizado masivo y gestión de buffers en WebGL.',
       path: '/test/triangles_static',
       icon: '📐'
     },
     {
       id: 'triangles_rotating',
-      title: '4,000 Triángulos Rotando',
+      title: 'Triángulos Rotando',
       description: 'Prueba de estrés de CPU/GPU mediante el procesamiento de transformaciones en tiempo real.',
       path: '/test/triangles_rotating',
       icon: '🌀'
@@ -32,14 +32,14 @@ export default function TestDashboard() {
     },
     {
       id: 'raycasting',
-      title: '500 Objetos - Eventos',
+      title: 'Objetos - Eventos',
       description: 'Prueba el sistema de interactividad nativo en múltiples intersecciones concurrentes.',
       path: '/test/raycasting',
       icon: '🖱️'
     },
     {
       id: 'animation_stress',
-      title: '500 Animaciones (useFrame)',
+      title: 'Animaciones (useFrame)',
       description: 'Prueba de sobrecarga del ciclo de renderizado R3F por ref independientes.',
       path: '/test/animation_stress',
       icon: '☄️'
@@ -53,17 +53,38 @@ export default function TestDashboard() {
     },
     {
       id: 'physics_stress',
-      title: 'Estrés de Física (200 RigidBodies)',
+      title: 'Estrés de Física',
       description: 'Prueba de estrés de CPU/GPU mediante el procesamiento de transformaciones en tiempo real.',
       path: '/test/physics_stress',
       icon: '🪨'
     },
     {
       id: 'vram_stress',
-      title: 'Estrés de Memoria (200 Texturas)',
+      title: 'Estrés de Memoria',
       description: 'Prueba de estrés de VRAM mediante el procesamiento de texturas en tiempo real.',
       path: '/test/vram_stress',
       icon: '💽'
+    },
+    {
+      id: 'shadows_stress',
+      title: 'Estrés de Sombras',
+      description: 'Prueba intensiva de GPU procesando múltiples fuentes de luz y sombras superpuestas.',
+      path: '/test/shadows_stress',
+      icon: '🌗'
+    },
+    {
+      id: 'materials_stress',
+      title: 'Materiales PBR Complejos',
+      description: 'Evalúa el impacto de materiales físicos avanzados como vidrio, refracción y clearcoat.',
+      path: '/test/materials_stress',
+      icon: '💎'
+    },
+    {
+      id: 'postprocessing_stress',
+      title: 'Post-Procesado Pesado',
+      description: 'Mide la carga de la GPU al aplicar pases de efectos como Bloom, SSAO, Ruido y Viñeta.',
+      path: '/test/postprocessing_stress',
+      icon: '🎬'
     }
   ];
 
@@ -91,14 +112,14 @@ export default function TestDashboard() {
 
       <header className="text-center mb-16 relative z-10">
         <h1 className="text-5xl md:text-7xl font-bold bg-linear-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent mb-4 tracking-tight">
-          Panel de Pruebas Babylon
+          Panel de Pruebas BABYLON
         </h1>
-        <p className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto border-b border-white/10 pb-6">
+        <p className="text-gray-400 text-lg md:text-xl max-w-7xl mx-auto border-b border-white/10 pb-6">
           Métricas de rendimiento para investigación de grado: Plataformas Web 3D para Psicología.
         </p>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-6xl relative z-10">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-8 w-full max-w-[1440px] relative z-10">
         {tests.map((test) => (
           <Link
             key={test.id}
@@ -129,12 +150,6 @@ export default function TestDashboard() {
       </div>
 
       <footer className="mt-20 text-gray-500 flex flex-col items-center gap-4">
-        <Link href="/" className="hover:text-white transition-colors flex items-center gap-2">
-          <svg className="w-4 h-4 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-          </svg>
-          Volver a la Casa
-        </Link>
         <p className="text-sm">Tesis Grado © 2026 - Análisis de Performance WebGL</p>
       </footer>
     </main>

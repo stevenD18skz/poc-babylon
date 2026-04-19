@@ -1,8 +1,29 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import * as ReactDOM from 'react-dom'
+
+// --- SHIM PARA COMPATIBILIDAD CON REACT 19 ---
+// Algunas librerías como Babylon Inspector aún buscan ReactDOM.render que fue eliminado en React 19.
+if (typeof window !== 'undefined') {
+    const rd = ReactDOM as any;
+    if (!rd.render || (rd.default && !rd.default.render)) {
+        import('react-dom/client').then(({ createRoot }) => {
+            const renderShim = (element: any, container: any) => {
+                const root = createRoot(container);
+                root.render(element);
+                return root;
+            };
+            if (rd.default) rd.default.render = renderShim;
+            rd.render = renderShim;
+        }).catch(err => console.error('Error al cargar el shim de React 19:', err));
+    }
+}
+// --- FIN DEL SHIM ---
+
 import { useControls } from 'leva'
 import * as BABYLON from '@babylonjs/core'
+import { GridMaterial } from '@babylonjs/materials'
 
 interface DebugStats {
   fps: number
@@ -205,7 +226,7 @@ export default function DebugTools({ scene, engine }: DebugToolsProps) {
     useEffect(() => {
         if (showGrid && !gridRef.current) {
             const grid = BABYLON.MeshBuilder.CreateGround('grid', { width: 20, height: 20, subdivisions: 20 }, scene)
-            const gridMat = new BABYLON.GridMaterial('gridMat', scene)
+            const gridMat = new GridMaterial('gridMat', scene)
             grid.material = gridMat
             gridRef.current = grid
         } else if (!showGrid && gridRef.current) {
@@ -224,12 +245,13 @@ export default function DebugTools({ scene, engine }: DebugToolsProps) {
         }
     }, [showAxes, scene])
 
-    // Inicializar Inspector
     useEffect(() => {
         if (showInspector) {
-            BABYLON.Inspector.Show(scene, {
-                embedMode: true,
-                globalRoot: document.body as any
+            import('@babylonjs/inspector').then(({ Inspector }) => {
+                Inspector.Show(scene, {
+                    embedMode: true,
+                    globalRoot: document.body as any
+                })
             })
         }
     }, [showInspector, scene])
