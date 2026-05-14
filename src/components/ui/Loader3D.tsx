@@ -9,14 +9,14 @@ import React from 'react'
  */
 export default function Loader3D() {
   return (
-    <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-xl transition-opacity duration-700">
+    <div className="absolute inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-xl transition-opacity duration-700">
       <div className="relative group">
         {/* Animated Background Glows */}
         <div className="absolute -inset-16 bg-blue-600/20 rounded-full blur-[80px] animate-pulse" />
         <div className="absolute -inset-16 bg-emerald-600/10 rounded-full blur-[60px] animate-pulse delay-700" />
         
         {/* Central Loader Container */}
-        <div className="relative flex flex-col items-center p-12 rounded-[2.5rem] bg-white/[0.03] border border-white/10 shadow-2xl backdrop-blur-2xl">
+        <div className="relative flex flex-col items-center p-12 rounded-[2.5rem] bg-white/3 border border-white/10 shadow-2xl backdrop-blur-2xl">
           
           {/* Geometric Spinner */}
           <div className="relative w-32 h-32 mb-10">
@@ -39,7 +39,7 @@ export default function Loader3D() {
           {/* Text Content */}
           <div className="flex flex-col items-center gap-3">
             <h2 className="text-3xl font-black text-white tracking-tight uppercase italic flex items-center gap-2">
-              <span className="bg-gradient-to-r from-blue-400 via-emerald-400 to-orange-400 bg-clip-text text-transparent">
+              <span className="bg-linear-to-r from-blue-400 via-emerald-400 to-orange-400 bg-clip-text text-transparent">
                 Syncing
               </span>
               <span className="text-slate-500">Engine</span>
@@ -61,7 +61,7 @@ export default function Loader3D() {
           </div>
 
           {/* Progress Bar Decorator */}
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-[1px] bg-gradient-to-r from-transparent via-blue-500/50 to-transparent" />
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1/2 h-px bg-linear-to-r from-transparent via-blue-500/50 to-transparent" />
       </div>
     </div>
     </div>

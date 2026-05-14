@@ -50,12 +50,12 @@ function DynamicLightsHUD({ metrics, count }: { metrics: any, count: number }) {
         const n = stats.current.samples
         const avgFT = stats.current.ftSum / n
         const avgJ = stats.current.jSum / n
-        
+
         console.log(
           `%c[5s Avg - Dynamic Lights] FT: ${avgFT.toFixed(2)}ms | Scripting Time: ~0.5ms | Shader Complexity: ${count} Luces | Pixel Fill Rate: ${avgFT.toFixed(2)}ms | Jitter: ${avgJ.toFixed(2)}ms`,
           'color: #facc15; font-weight: bold;'
         )
-        
+
         stats.current.ftSum = 0
         stats.current.jSum = 0
         stats.current.samples = 0
@@ -107,9 +107,9 @@ export default function DynamicLightsBabylonTest() {
   const [selectedLightType, setSelectedLightType] = useState<string>('PointLight')
   const [metrics, setMetrics] = useState({ jitter: 0, frameTime: 0 })
   const [isLoading, setIsLoading] = useState(true)
-  
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  
+
   // Referencias para limpiar y actualizar recursos sin recrear el motor
   const sceneRef = useRef<BABYLON.Scene | null>(null)
   const materialsRef = useRef<BABYLON.PBRMaterial[]>([])
@@ -155,8 +155,8 @@ export default function DynamicLightsBabylonTest() {
       if (type === 'box') mesh = BABYLON.MeshBuilder.CreateBox(name, args, scene)
       else if (type === 'sphere') mesh = BABYLON.MeshBuilder.CreateSphere(name, args, scene)
       else if (type === 'cylinder') mesh = BABYLON.MeshBuilder.CreateCylinder(name, args, scene)
-      
-      if(mesh) {
+
+      if (mesh) {
         mesh.position.set(pos[0], pos[1], pos[2])
         mesh.receiveShadows = true
         mesh.material = createPBR(`${name}Mat`, matParams.c, matParams.r, matParams.m)
@@ -191,7 +191,7 @@ export default function DynamicLightsBabylonTest() {
 
       metricsCalculator.push(delta)
       frameCount++
-      
+
       if (frameCount === 1) setIsLoading(false)
       if (frameCount % 10 === 0) setMetrics(metricsCalculator.compute())
 
@@ -209,29 +209,29 @@ export default function DynamicLightsBabylonTest() {
           light.position.z = Math.sin(localT + angle) * radius
           light.position.y = 3 + Math.sin(localT * 1.5 + angle) * 1.5
           if (mesh) mesh.position.copyFrom(light.position)
-        } 
+        }
         else if (type === 'SpotLight') {
           const radius = 10
           light.position.x = Math.cos(localT + angle) * radius
           light.position.z = Math.sin(localT + angle) * radius
           light.position.y = 8 + Math.sin(localT * 1.2 + angle) * 2
-          
+
           if (mesh) mesh.position.copyFrom(light.position)
-          
+
           // Mover objetivo y recalcular dirección
           const tx = Math.sin(localT * 0.5 + angle) * 2
           const tz = Math.cos(localT * 0.5 + angle) * 2
           light.direction = new BABYLON.Vector3(tx - light.position.x, 0 - light.position.y, tz - light.position.z).normalize()
-        } 
+        }
         else if (type === 'DirectionalLight') {
           light.position.x = Math.cos(localT + angle) * 15
           light.position.z = Math.sin(localT + angle) * 15
           light.position.y = 12 + Math.sin(localT * 0.8 + angle) * 4
-          
+
           if (mesh) mesh.position.copyFrom(light.position)
           // Apuntar al centro (0,0,0)
           light.direction = BABYLON.Vector3.Zero().subtract(light.position).normalize()
-        } 
+        }
         else if (type === 'HemisphereLight') {
           const hue = (((index / total) * 360 + localT * 20) % 360)
           // Conversión rápida HSL a RGB en Babylon vía HSV (S=1, V=1)
@@ -259,15 +259,6 @@ export default function DynamicLightsBabylonTest() {
     const scene = sceneRef.current
     if (!scene) return
 
-    // Limpiar luces anteriores
-    activeLightsData.current.forEach(data => {
-      if (data.light) data.light.dispose()
-      if (data.mesh) data.mesh.dispose()
-      if (data.shadowGen) data.shadowGen.dispose()
-      if (data.mat) data.mat.dispose()
-    })
-    activeLightsData.current = []
-
     // Ajustar Límite de PBR Materials para que todas las luces hagan efecto a la vez
     materialsRef.current.forEach(mat => {
       mat.maxSimultaneousLights = Math.max(4, count)
@@ -278,7 +269,7 @@ export default function DynamicLightsBabylonTest() {
       const speed = 0.3 + (i % 5) * 0.1
       const hue = (i / count) * 360
       const color = BABYLON.Color3.FromHSV(hue, 1, 1)
-      
+
       let light: any
       let mesh: any
       let shadowGen: BABYLON.ShadowGenerator | null = null
@@ -297,7 +288,7 @@ export default function DynamicLightsBabylonTest() {
         // Sphere visual helper
         mesh = BABYLON.MeshBuilder.CreateSphere(`pm-${i}`, { diameter: 0.3, segments: 8 }, scene)
         mesh.material = mat
-        
+
         shadowGen = new BABYLON.ShadowGenerator(256, light)
         shadowGen.bias = 0.001
 
@@ -306,7 +297,7 @@ export default function DynamicLightsBabylonTest() {
         light = new BABYLON.SpotLight(`sl-${i}`, BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, -1, 0), Math.PI / 3, 2, scene)
         light.diffuse = color
         light.intensity = 30
-        
+
         // Cone visual helper
         mesh = BABYLON.MeshBuilder.CreateCylinder(`sm-${i}`, { diameterTop: 0, diameterBottom: 0.3, height: 0.3, tessellation: 8 }, scene)
         mesh.material = mat
@@ -314,7 +305,7 @@ export default function DynamicLightsBabylonTest() {
 
         shadowGen = new BABYLON.ShadowGenerator(256, light)
         shadowGen.bias = 0.001
-        
+
       } else if (selectedLightType === 'DirectionalLight') {
         light = new BABYLON.DirectionalLight(`dl-${i}`, new BABYLON.Vector3(0, -1, 0), scene)
         light.diffuse = color
@@ -332,7 +323,7 @@ export default function DynamicLightsBabylonTest() {
         light.orthoTop = 15
         light.orthoBottom = -15
         shadowGen.bias = 0.001
-        
+
       } else if (selectedLightType === 'HemisphereLight') {
         light = new BABYLON.HemisphericLight(`hl-${i}`, new BABYLON.Vector3(0, 1, 0), scene)
         light.intensity = 0.8
@@ -356,6 +347,31 @@ export default function DynamicLightsBabylonTest() {
         mat
       })
     }
+
+    return () => {
+    const scene = sceneRef.current;
+    
+    // 1. CHEQUEO CRÍTICO: Si el motor ya destruyó la escena, no hacemos nada.
+    if (!scene || scene.isDisposed) {
+      activeLightsData.current = [];
+      return;
+    }
+
+    // 2. ORDEN ESTRICTO DE DESTRUCCIÓN (Dependencias primero, base después)
+    activeLightsData.current.forEach(data => {
+      // A. Sombras y materiales primero
+      if (data.shadowGen) data.shadowGen.dispose();
+      if (data.mat) data.mat.dispose();
+      
+      // B. Mallas auxiliares (validando que sigan vivas)
+      if (data.mesh && !data.mesh.isDisposed()) data.mesh.dispose();
+      
+      // C. Luces al final (cuando ya nada depende de ellas)
+      if (data.light && !data.light.isDisposed()) data.light.dispose();
+    });
+    
+    activeLightsData.current = [];
+  }
   }, [count, selectedLightType])
 
   const selectOptions: Record<string, number> = Object.fromEntries(
@@ -377,26 +393,20 @@ export default function DynamicLightsBabylonTest() {
         input={true}
         count={count}
         setCount={setCount}
-        inputConfig={{
-          unit: 'normal',
-          type: 'values',
-          values: LIGHT_RANGES[selectedLightType],
-        }}
-        selectOptions={selectOptions}
-        selectedOption={selectedLightType}
-        onSelectChange={handleLightTypeChange}
+        
+        
+        
       />
-      
+
       <DynamicLightsHUD metrics={metrics} count={count} />
 
       <div className="absolute inset-0 pointer-events-none z-10">
-        <DebugTools title="Iluminación Dinámica Babylon" entityCount={count} />
         {isLoading && <Loader3D />}
       </div>
 
-      <canvas 
-        ref={canvasRef} 
-        className="w-full h-full outline-none block" 
+      <canvas
+        ref={canvasRef}
+        className="w-full h-full outline-none block"
       />
     </main>
   )

@@ -80,8 +80,8 @@ const WALL_THICKNESS = 0.5
 // ─── COMPONENTE PRINCIPAL BABYLON ────────────────────────────────────────────
 export default function ShadowsStressBabylonTest() {
   const [count, setCount] = useState(64)
-  const [lightCount, setLightCount] = useState(1)
-  const [isStatic, setIsStatic] = useState(false)
+  const [lightCount, setLightCount] = useState(3)
+  const [isStatic, setIsStatic] = useState(true)
   const [isLoading, setIsLoading] = useState(true)
   const [metrics, setMetrics] = useState({ 
     jitter: 0, frameTime: 0, fps: 0, cpuTime: 0, gpuTime: 0, drawCalls: 0, triangles: 0, ram: 0 
@@ -110,7 +110,7 @@ export default function ShadowsStressBabylonTest() {
     engineInstrumentation.captureGPUFrameTime = true // Depende de la extensión EXT_disjoint_timer_query_webgl2
 
     // Cámara equivalente a position [0, 60, 0] y fov 60
-    const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, 0.01, 60, BABYLON.Vector3.Zero(), scene)
+    const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, 0.01, 65, BABYLON.Vector3.Zero(), scene)
     camera.fov = 60 * (Math.PI / 180)
     camera.attachControl(canvasRef.current, true)
 
@@ -163,7 +163,7 @@ export default function ShadowsStressBabylonTest() {
       const s = 0.5 + Math.random() * 1.2
 
       pos.set(x, y, z)
-      scale.setScalar(s)
+      scale.setAll(s)
       BABYLON.Quaternion.RotationYawPitchRollToRef(ry, rx, 0, rotQuat)
       BABYLON.Matrix.ComposeToRef(scale, rotQuat, pos, tempMat)
       tempMat.copyToArray(matrixBuffer, i * 16)
@@ -226,14 +226,6 @@ export default function ShadowsStressBabylonTest() {
     const scene = sceneRef.current
     if (!scene) return
 
-    // Limpiar luces previas
-    activeLightsRef.current.forEach(data => {
-      data.light.dispose()
-      data.shadowGen.dispose()
-      data.helper.dispose()
-    })
-    activeLightsRef.current = []
-
     const orbitRadius = ARENA.w * 0.28
     const lightY = ARENA.h * 0.55
 
@@ -291,6 +283,12 @@ export default function ShadowsStressBabylonTest() {
 
     return () => {
       scene.onBeforeRenderObservable.remove(animObserver)
+      activeLightsRef.current.forEach(data => {
+        data.light.dispose()
+        data.shadowGen.dispose()
+        data.helper.dispose()
+      })
+      activeLightsRef.current = []
     }
   }, [lightCount, isStatic])
 
@@ -299,7 +297,6 @@ export default function ShadowsStressBabylonTest() {
       <ExtendedMetricsHUD metrics={metrics} lightCount={lightCount} />
       
       <div className="absolute inset-0 pointer-events-none z-10">
-        <DebugTools title="Estrés de Sombras Babylon (Arena)" entityCount={count} />
         {isLoading && <Loader3D />}
       </div>
 

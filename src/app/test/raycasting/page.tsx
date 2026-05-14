@@ -225,9 +225,6 @@ export default function RaycastBabylonTest() {
     baseSphere.isVisible = false
 
     // Poblar Targets
-    targetsRef.current.forEach(t => { t.mesh.dispose(); t.mat.dispose() })
-    targetsRef.current = []
-    
     for (let i = 0; i < count; i++) {
       targetsRef.current.push(spawnTargetData(scene, nextId.current++, baseSphere))
     }
@@ -345,6 +342,8 @@ export default function RaycastBabylonTest() {
     return () => {
       window.removeEventListener('resize', handleResize)
       if (canvasRef.current) canvasRef.current.removeEventListener('pointerdown', handlePointerDown)
+      targetsRef.current.forEach(t => { t.mesh.dispose(); t.mat.dispose() })
+      targetsRef.current = []
       engine.dispose()
     }
   }, [count, spawnTargetData])

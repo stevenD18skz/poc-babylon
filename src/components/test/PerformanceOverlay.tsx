@@ -105,7 +105,7 @@ export default function PerformanceOverlay({
         <div className="p-2 border-b border-white/5">
           <Link
             href="/test"
-            className="group w-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white px-4 py-3 rounded-[2rem] font-bold transition-all text-[9px] uppercase tracking-[0.2em] flex items-center justify-center gap-3"
+            className="group w-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white px-4 py-3 rounded-4xl font-bold transition-all text-[9px] uppercase tracking-[0.2em] flex items-center justify-center gap-3"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

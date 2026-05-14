@@ -81,31 +81,44 @@ export default function SceneIdleTestBabylon() {
     camera.inertia = 0.6
     camera.panningInertia = 0.6
 
-    // ── Environment + Skybox (equivalente a <Environment preset="forest">) ──
-    const envHelper = scene.createDefaultEnvironment({
-      environmentTexture:
-        'https://playground.babylonjs.com/textures/environment.env',
-      createSkybox: true,
-      skyboxSize: 5_000,
-      createGround: false,
-    })
-    if (envHelper?.skybox) {
-      envHelper.skybox.isPickable = false
-    }
+    // ── HDR Texture ─────────────────────────────────────────────────────────────
+    const hdrTexture = new BABYLON.HDRCubeTexture(
+      '/textures/forest_slope_1k.hdr',
+      scene,
+      256,    // Three.js PMREMGenerator usa 256 internamente
+      false,  // noMipmap: false → genera mipmaps (igual que Three.js)
+      true,   // generateHarmonics: true → IBL difuso (equivalente al SH de Three.js)
+      // si lo pones false pierdes la iluminación ambiental suave
+      false,  // gammaSpace: false → HDR es espacio lineal, no gamma
+      false,  // prefiltered: false → el archivo no está pre-filtrado
+    )
+    scene.environmentIntensity = 1.0  // R3F default es 1.0
+    scene.environmentTexture = hdrTexture
 
-    // Luz hemisférica como fallback / fill light
-    const hemi = new BABYLON.HemisphericLight(
-      'hemi',
-      new BABYLON.Vector3(0, 1, 0),
+    // ── Skybox ───────────────────────────────────────────────────────────────────
+    const skybox = BABYLON.MeshBuilder.CreateBox(
+      'skyBox',
+      { size: 5_000 },
       scene,
     )
-    hemi.intensity = 0.4
+    const skyboxMat = new BABYLON.StandardMaterial('skyBoxMat', scene)
+    skyboxMat.backFaceCulling = false
+    skyboxMat.reflectionTexture = hdrTexture.clone()
+    skyboxMat.reflectionTexture.coordinatesMode = BABYLON.Texture.SKYBOX_MODE
+    skyboxMat.diffuseColor = new BABYLON.Color3(0, 0, 0)
+    skyboxMat.specularColor = new BABYLON.Color3(0, 0, 0)
+    skybox.material = skyboxMat
+    skybox.isPickable = false
 
-    // ── Instrumentación ─────────────────────────────────────────────────────
+    // ── Instrumentación de la Escena (CPU) ──────────────────────────────────
     const sceneInst = new BABYLON.SceneInstrumentation(scene)
     sceneInst.captureFrameTime = true       // CPU total frame (ms)
-    sceneInst.captureGPUFrameTime = true    // GPU frame time (nanosegundos en WebGL2)
     sceneInst.captureRenderTime = true      // render-only CPU (ms)
+
+    // ── Instrumentación del Motor (GPU) ─────────────────────────────────────
+    const engineInst = new BABYLON.EngineInstrumentation(engine)
+    engineInst.captureGPUFrameTime = true   // Habilita la lectura de la GPU
+
 
     // Draw calls: se capturan en el observable afterRenderObservable
     let drawCallsSnapshot = 0
@@ -121,7 +134,7 @@ export default function SceneIdleTestBabylon() {
     engine.runRenderLoop(() => scene.render())
 
     // ── Métricas cada 3 s ────────────────────────────────────────────────────
-    const INTERVAL_MS = 3_000
+    const INTERVAL_MS = 5_000
     const metricInterval = setInterval(() => {
       // FPS promedio (ventana de últimas 10 muestras)
       const currentFps = engine.getFps()
@@ -130,12 +143,12 @@ export default function SceneIdleTestBabylon() {
       const avgFps =
         fpsSamples.reduce((a, b) => a + b, 0) / fpsSamples.length
 
-      // GPU ms/frame  (contador en nanosegundos → ms)
-      //const gpuNs  = sceneInst.gpuFrameTimeCounter.current  // puede ser 0 si no hay timer extension
-      //const gpuMs  = gpuNs > 0 ? (gpuNs / 1_000_000) : 0
+      // AHORA:
+      const gpuNs = engineInst.gpuFrameTimeCounter.current
+      const gpuMs = gpuNs > 0 ? (gpuNs / 1_000_000) : 0
 
       // CPU ms/frame (tiempo total por frame incluyendo JS + render)
-      const cpuMs  = sceneInst.frameTimeCounter.current
+      const cpuMs = sceneInst.frameTimeCounter.current
 
       // RAM (Chrome / Edge solamente; otros devuelven N/A)
       const mem = (performance as PerfMemory).memory
@@ -156,12 +169,12 @@ export default function SceneIdleTestBabylon() {
         `%c[Babylon Baseline] ${new Date().toLocaleTimeString()}`,
         'color:#7c3aed;font-weight:700;font-size:12px',
       )
-      console.log(`%cFPS Promedio     %c${avgFps.toFixed(1)}`,        'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
-      //console.log(`%cGPU (ms/frame)   %c${gpuMs.toFixed(2)} ms`,      'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
-      console.log(`%cCPU (ms/frame)   %c${cpuMs.toFixed(2)} ms`,      'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
-      console.log(`%cRAM              %c${ramMB} MB`,                  'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
-      console.log(`%cVRAM Estimada    %c${vramMB} MB`,                 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
-      console.log(`%cDraw Calls       %c${drawCalls}`,                 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+      console.log(`%cFPS Promedio     %c${avgFps.toFixed(1)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+      console.log(`%cGPU (ms/frame)   %c${gpuMs.toFixed(2)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+      console.log(`%cCPU (ms/frame)   %c${cpuMs.toFixed(2)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+      console.log(`%cRAM              %c${ramMB} MB`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+      console.log(`%cVRAM Estimada    %c${vramMB} MB`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+      console.log(`%cDraw Calls       %c${drawCalls}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
       console.log(`%cTriángulos       %c${triangles.toLocaleString()}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
       console.groupEnd()
     }, INTERVAL_MS)
@@ -175,6 +188,7 @@ export default function SceneIdleTestBabylon() {
       clearInterval(metricInterval)
       window.removeEventListener('resize', handleResize)
       sceneInst.dispose()
+      engineInst.dispose()
       scene.dispose()
       engine.dispose()
     }
