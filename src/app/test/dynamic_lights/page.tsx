@@ -171,13 +171,13 @@ export default function DynamicLightsBabylonTest() {
 
     // 3 Spheres
     createMesh('sphere', 's1', [-4, 1, 0], { diameter: 2, segments: 32 }, { c: "#ec4899", r: 0.2, m: 0.5 })
-    createMesh('sphere', 's2', 's2', [0, 1, 0], { diameter: 2, segments: 32 }, { c: "#f43f5e", r: 0.2, m: 0.75 })
-    createMesh('sphere', 's3', 's3', [4, 1, 0], { diameter: 2, segments: 32 }, { c: "#fb7185", r: 0.2, m: 1 })
+    createMesh('sphere', 's2', [0, 1, 0], { diameter: 2, segments: 32 }, { c: "#f43f5e", r: 0.2, m: 0.75 })
+    createMesh('sphere', 's3', [4, 1, 0], { diameter: 2, segments: 32 }, { c: "#fb7185", r: 0.2, m: 1 })
 
     // 3 Cylinders
     createMesh('cylinder', 'c1', [-4, 1.5, 4], { diameter: 1.6, height: 3, tessellation: 32 }, { c: "#06b6d4", r: 0.3, m: 1 })
-    createMesh('cylinder', 'c2', 'c2', [0, 1.5, 4], { diameter: 1.6, height: 3, tessellation: 32 }, { c: "#0ea5e9", r: 0.3, m: 2 })
-    createMesh('cylinder', 'c3', 'c3', [4, 1.5, 4], { diameter: 1.6, height: 3, tessellation: 32 }, { c: "#38bdf8", r: 0.3, m: 3 })
+    createMesh('cylinder', 'c2', [0, 1.5, 4], { diameter: 1.6, height: 3, tessellation: 32 }, { c: "#0ea5e9", r: 0.3, m: 2 })
+    createMesh('cylinder', 'c3', [4, 1.5, 4], { diameter: 1.6, height: 3, tessellation: 32 }, { c: "#38bdf8", r: 0.3, m: 3 })
 
     // Render Loop & Animation de luces CPU
     let frameCount = 0

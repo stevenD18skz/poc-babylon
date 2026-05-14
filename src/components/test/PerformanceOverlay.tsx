@@ -32,33 +32,33 @@ export default function PerformanceOverlay({
 
     const metricsInterval = setInterval(() => {
       // FPS Promedio
-      const fpsAvg = engine.fps.toFixed(2)
+      const fpsAvg = engine.getFps().toFixed(2)
 
-      // GPU (ms/frame) — engine.deltaTime está en segundos
-      const gpuMs = (engine.deltaTime).toFixed(3)
+      // GPU (ms/frame)
+      const gpuMs = engine.getDeltaTime().toFixed(3)
 
-      // CPU (ms/frame) — usamos deltaTime también como aproximación
-      const cpuMs = (engine.deltaTime).toFixed(3)
+      // CPU (ms/frame)
+      const cpuMs = engine.getDeltaTime().toFixed(3)
 
       // RAM (MB)
       const ramMb =
         (
-          (performance.memory?.usedJSHeapSize || 0) /
+          ((performance as any).memory?.usedJSHeapSize || 0) /
           1048576
         ).toFixed(2)
 
       // VRAM Estimada (MB) — aproximación basada en texturas del engine
-      let vramMb = 0
+      let vramValue = 0
       if (scene.textures) {
         for (const texture of scene.textures) {
           if (texture.getBaseSize) {
             const size = texture.getBaseSize()
             // Aproximación: 4 bytes por pixel (RGBA)
-            vramMb += (size.width * size.height * 4) / 1048576
+            vramValue += (size.width * size.height * 4) / 1048576
           }
         }
       }
-      vramMb = vramMb.toFixed(2)
+      const vramMb = vramValue.toFixed(2)
 
       // Draw Calls — Babylon almacena esto en _drawCalls
       const drawCalls = (engine as any)._drawCalls || 0
@@ -69,8 +69,9 @@ export default function PerformanceOverlay({
         if (mesh.geometry) {
           const vertexCount = mesh.geometry.getTotalVertices()
           // Asumiendo que es un índice buffer, dividimos por 3
-          if (mesh.getIndices?.()) {
-            totalTriangles += mesh.getIndices().length / 3
+          const indices = mesh.getIndices?.()
+          if (indices) {
+            totalTriangles += indices.length / 3
           } else {
             totalTriangles += vertexCount / 3
           }
