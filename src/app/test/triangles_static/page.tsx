@@ -1,126 +1,228 @@
 'use client'
- 
-import { useEffect, useRef, useState } from 'react'
-import {
-  Engine,
-  Scene,
-  ArcRotateCamera,
-  Vector3,
-  Color3,
-  Color4,
-  HemisphericLight,
-  MeshBuilder,
-  StandardMaterial,
-  Matrix
-} from '@babylonjs/core'
+
+import { useRef, useEffect, useState } from 'react'
+import * as BABYLON from '@babylonjs/core'
 import PerformanceOverlay from '@/components/test/PerformanceOverlay'
-import DebugTools from '@/components/DebugTools'
- 
-// ✅ Mismo count que R3F
-const COUNT = 32_000
- 
-export default function TrianglesStaticTestBabylon() {
+
+// Helper para convertir HSL a RGB en rango [0, 1]
+function hslToRgb(h: number, s: number, l: number) {
+  const c = (1 - Math.abs(2 * l - 1)) * s
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1))
+  const m = l - c / 2
+  let r = 0, g = 0, b = 0
+  
+  if (h >= 0 && h < 60) { r = c; g = x; b = 0 }
+  else if (h >= 60 && h < 120) { r = x; g = c; b = 0 }
+  else if (h >= 120 && h < 180) { r = 0; g = c; b = x }
+  else if (h >= 180 && h < 240) { r = 0; g = x; b = c }
+  else if (h >= 240 && h < 300) { r = x; g = 0; b = c }
+  else if (h >= 300 && h < 360) { r = c; g = 0; b = x }
+  
+  return { r: r + m, g: g + m, b: b + m }
+}
+
+export default function TrianglesStaticTest() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [sceneState, setSceneState] = useState<{ scene: Scene; engine: Engine } | null>(null)
- 
+  const [count, setCount] = useState(1000)
+  
+  const engineRef = useRef<BABYLON.Engine | null>(null)
+  const meshRef = useRef<BABYLON.Mesh | null>(null)
+  const stateRef = useRef({ pendingLoadTime: true })
+
+  const metricsRef = useRef({
+    loadTime: 0,
+    startTime: performance.now(),
+    samples: new Float32Array(60),
+    sampleIndex: 0,
+    sampleFilled: 0,
+    lastLogTime: performance.now()
+  })
+
+  // Inicialización de la escena (solo una vez)
   useEffect(() => {
     if (!canvasRef.current) return
- 
-    const canvas = canvasRef.current
-    const engine = new Engine(canvas, true)
-    const scene = new Scene(engine)
- 
-    // ✅ Mismo fondo que R3F
-    scene.clearColor = Color4.FromColor3(Color3.FromHexString('#050505'), 1)
- 
-    // ✅ Misma posición de cámara que R3F (20, 20, 20), mismo fov 50
-    const camera = new ArcRotateCamera('camera', 0, Math.PI / 4, 34.6, Vector3.Zero(), scene)
-    // Nota: radio 34.6 ≈ distancia euclidiana de (20,20,20) al origen
-    camera.fov = 0.872 // 50 grados en radianes
-    camera.attachControl(canvas, true)
-    // ✅ Sin autoRotate (R3F tampoco lo tiene)
- 
-    // ✅ Solo ambient light, misma intensidad que R3F (intensity: 1)
-    const ambientLight = new HemisphericLight('ambient', new Vector3(0, 1, 0), scene)
-    ambientLight.intensity = 1.0
- 
-    // ✅ Geometría idéntica a R3F:
-    // coneGeometry args: [0.2, 0.4, 8]
-    // → radio: 0.2 → diámetro: 0.4
-    // → altura: 0.4
-    // → segmentos: 8
-    const baseMesh = MeshBuilder.CreateCylinder(
-      'baseCone',
-      {
-        diameterTop: 0,       // Es un cono
-        diameterBottom: 0.4,  // 2 * radio (0.2)
-        height: 0.4,          // Mismo que R3F
-        tessellation: 8,      // Mismo que R3F (radialSegments)
-      },
-      scene
-    )
- 
-    // ✅ Material simple, sin colores fancy (igual que R3F meshStandardMaterial sin props)
-    const mat = new StandardMaterial('mat', scene)
-    baseMesh.material = mat
- 
-    // ✅ Thin Instances = InstancedMesh de Three.js (ambos son 1 draw call)
-    const bufferMatrices = new Float32Array(COUNT * 16)
- 
-    const dummyMatrix = Matrix.Identity()
-    for (let i = 0; i < COUNT; i++) {
-      // ✅ Mismo rango de radio que R3F (10 + random * 15)
+
+    if (!engineRef.current) {
+      metricsRef.current.startTime = performance.now()
+      
+      const engine = new BABYLON.Engine(canvasRef.current, true, {
+        stencil: true,
+        antialias: true
+      })
+      engineRef.current = engine
+      
+      const scene = new BABYLON.Scene(engine)
+      scene.clearColor = BABYLON.Color4.FromHexString("#050505FF")
+
+      // Cámara
+      const camera = new BABYLON.ArcRotateCamera(
+        "camera", 
+        Math.PI / 4, 
+        Math.PI / 4, 
+        34.64, 
+        BABYLON.Vector3.Zero(), 
+        scene
+      )
+      camera.setPosition(new BABYLON.Vector3(20, 20, 20))
+      camera.fov = 50 * (Math.PI / 180)
+      camera.attachControl(canvasRef.current, true)
+
+      // Iluminación (equivalente a ambientLight intensity=1)
+      const light = new BABYLON.HemisphericLight("ambient", new BABYLON.Vector3(0, 1, 0), scene)
+      light.diffuse = new BABYLON.Color3(1, 1, 1)
+      light.groundColor = new BABYLON.Color3(1, 1, 1)
+      light.specular = new BABYLON.Color3(0, 0, 0)
+      light.intensity = 1
+
+      // Geometría: cono radio 0.2 (diametro 0.4), altura 0.4, 8 segmentos
+      const cone = BABYLON.MeshBuilder.CreateCylinder("cone", { 
+        diameterTop: 0, 
+        diameterBottom: 0.4, 
+        height: 0.4, 
+        tessellation: 8 
+      }, scene)
+      
+      const material = new BABYLON.StandardMaterial("coneMat", scene)
+      cone.material = material
+      
+      meshRef.current = cone
+
+      // Instrumentación para métricas
+      // (Se accede a los draw calls directamente desde el engine en Babylon)      
+      const engineInstrumentation = new BABYLON.EngineInstrumentation(engine)
+      engineInstrumentation.captureGPUFrameTime = true
+
+      engine.runRenderLoop(() => {
+        scene.render()
+        
+        const now = performance.now()
+        
+        if (stateRef.current.pendingLoadTime) {
+          metricsRef.current.loadTime = now - metricsRef.current.startTime
+          stateRef.current.pendingLoadTime = false
+        }
+
+        const delta = engine.getDeltaTime()
+        const m = metricsRef.current
+        
+        m.samples[m.sampleIndex] = delta
+        m.sampleIndex = (m.sampleIndex + 1) % 60
+        m.sampleFilled = Math.min(m.sampleFilled + 1, 60)
+
+        // Console log cada 3 segundos
+        if (now - m.lastLogTime >= 3000) {
+          m.lastLogTime = now
+
+          let jitter = 0
+          let frameTime = 0
+          
+          if (m.sampleFilled >= 2) {
+            let sum = 0
+            for (let i = 0; i < m.sampleFilled; i++) sum += m.samples[i]
+            frameTime = sum / m.sampleFilled
+            
+            let variance = 0
+            for (let i = 0; i < m.sampleFilled; i++) {
+              const diff = m.samples[i] - frameTime
+              variance += diff * diff
+            }
+            jitter = Math.sqrt(variance / m.sampleFilled)
+          }
+
+          const fps = engine.getFps()
+          const gpuMs = (engineInstrumentation.gpuFrameTimeCounter?.current || 0) / 1000000
+          const cpuMs = Math.max(0, frameTime - gpuMs)
+          
+          // Memoria RAM (si está disponible en el navegador, ej. Chrome)
+          const perf = performance as any
+          const ramMb = perf.memory ? perf.memory.usedJSHeapSize / 1048576 : 0
+          
+          const drawCalls = (engine as any)._drawCalls?.current || 1
+          const currentCount = meshRef.current?.thinInstanceCount || 0
+
+          console.log(`[Métricas - 3s Report]
+Entidades: ${currentCount}
+Motor: Babylon.js
+FPS: ${fps.toFixed(2)}
+GPU (ms): ${gpuMs > 0 ? gpuMs.toFixed(2) : 'N/A'}
+CPU (ms): ${cpuMs.toFixed(2)}
+Draw Calls: ${drawCalls}
+RAM (mb): ${ramMb > 0 ? ramMb.toFixed(2) : 'N/A'}
+Frame Time (ms): ${frameTime.toFixed(2)}
+Jitter (ms): ${jitter.toFixed(2)}
+Load Time (ms): ${m.loadTime.toFixed(2)}`)
+        }
+      })
+
+      const resizeHandler = () => engine.resize()
+      window.addEventListener('resize', resizeHandler)
+      
+      return () => {
+        window.removeEventListener('resize', resizeHandler)
+        engine.dispose()
+        engineRef.current = null
+      }
+    }
+  }, []) // Se ejecuta una sola vez al montar
+
+  // Actualización de las instancias (Thin Instances) al cambiar el count
+  useEffect(() => {
+    if (!meshRef.current) return
+    
+    // Reiniciar medición de tiempo de carga para esta nueva cantidad
+    metricsRef.current.startTime = performance.now()
+    stateRef.current.pendingLoadTime = true
+
+    const cone = meshRef.current
+    const matricesData = new Float32Array(16 * count)
+    const colorData = new Float32Array(4 * count)
+    const tempMatrix = BABYLON.Matrix.Identity()
+
+    for (let i = 0; i < count; i++) {
       const radius = 10 + Math.random() * 15
       const theta = Math.random() * Math.PI * 2
       const phi = Math.random() * Math.PI
- 
+
       const x = radius * Math.sin(phi) * Math.cos(theta)
       const y = radius * Math.sin(phi) * Math.sin(theta)
       const z = radius * Math.cos(phi)
- 
-      // ✅ Misma rotación aleatoria que R3F
-      Matrix.RotationYawPitchRollToRef(
-        Math.random() * Math.PI,
-        Math.random() * Math.PI,
-        Math.random() * Math.PI,
-        dummyMatrix
-      )
-      dummyMatrix.setTranslationFromFloats(x, y, z)
-      dummyMatrix.copyToArray(bufferMatrices, i * 16)
+
+      const rx = Math.random() * Math.PI
+      const ry = Math.random() * Math.PI
+      const rz = Math.random() * Math.PI
+
+      BABYLON.Matrix.RotationYawPitchRollToRef(ry, rx, rz, tempMatrix)
+      tempMatrix.setTranslationFromFloats(x, y, z)
+      tempMatrix.copyToArray(matricesData, i * 16)
+
+      const h = Math.random() * 50 + 200
+      const { r, g, b } = hslToRgb(h, 0.8, 0.5)
+      colorData[i * 4] = r
+      colorData[i * 4 + 1] = g
+      colorData[i * 4 + 2] = b
+      colorData[i * 4 + 3] = 1.0
     }
- 
-    // ✅ Sin buffer de colores (R3F tampoco tiene en la versión estática)
-    baseMesh.thinInstanceSetBuffer('matrix', bufferMatrices, 16, false)
- 
-    // ✅ Sin animación (R3F tampoco tiene)
- 
-    engine.runRenderLoop(() => {
-      scene.render()
-    })
- 
-    setSceneState({ scene, engine })
- 
-    const handleResize = () => engine.resize()
-    window.addEventListener('resize', handleResize)
- 
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      scene.dispose()
-      engine.dispose()
-    }
-  }, [])
- 
+
+    // Actualizar los buffers de las thin instances de forma estática
+    cone.thinInstanceSetBuffer("matrix", matricesData, 16, true)
+    cone.thinInstanceSetBuffer("color", colorData, 4, true)
+    
+  }, [count])
+
   return (
-    <main className="w-full h-screen bg-[#050505] overflow-hidden relative">
-      <PerformanceOverlay title={`${COUNT} Triángulos Estáticos (Babylon)`} />
-      
-      {sceneState && <DebugTools scene={sceneState.scene} engine={sceneState.engine} title="triangles_static" entityCount={COUNT} />}
- 
-      <canvas
-        ref={canvasRef}
-        className="block w-full h-full outline-none touch-none"
+    <main className="relative w-full h-screen bg-[#050505] overflow-hidden">
+      <PerformanceOverlay
+        title={`${count} Triángulos Estáticos`}
+        input={true}
+        count={count}
+        setCount={setCount}
+        inputConfig={{
+          unit: 'thousands',
+          type: 'values',
+          values: [1000, 4000, 16000, 64000, 256000, 1024000],
+        }}
       />
+      <canvas ref={canvasRef} className="w-full h-full outline-none" />
     </main>
   )
 }
- 

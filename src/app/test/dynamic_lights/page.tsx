@@ -1,228 +1,403 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import {
-  Engine,
-  Scene,
-  ArcRotateCamera,
-  Vector3,
-  Color3,
-  Color4,
-  HemisphericLight,
-  DirectionalLight,
-  SpotLight,
-  PointLight,
-  MeshBuilder,
-  StandardMaterial,
-  ShadowGenerator,
-  Texture,
-  NodeMaterial
-} from '@babylonjs/core'
+import * as BABYLON from '@babylonjs/core'
 import PerformanceOverlay from '@/components/test/PerformanceOverlay'
 import DebugTools from '@/components/DebugTools'
+import Loader3D from '@/components/ui/Loader3D'
 
-export default function DynamicLightsTest() {
+// ─── MÉTRICAS Y HUD (Idénticos al test de R3F) ───────────────────────────────
+const JITTER_SAMPLE_SIZE = 60
+const metricsCalculator = {
+  samples: new Float32Array(JITTER_SAMPLE_SIZE),
+  index: 0,
+  filled: 0,
+  push(delta: number) {
+    const ms = delta * 1000
+    this.samples[this.index] = ms
+    this.index = (this.index + 1) % JITTER_SAMPLE_SIZE
+    this.filled = Math.min(this.filled + 1, JITTER_SAMPLE_SIZE)
+  },
+  compute() {
+    if (this.filled < 2) return { jitter: 0, frameTime: 0 }
+    let sum = 0
+    for (let i = 0; i < this.filled; i++) sum += this.samples[i]
+    const mean = sum / this.filled
+    let variance = 0
+    for (let i = 0; i < this.filled; i++) {
+      const diff = this.samples[i] - mean
+      variance += diff * diff
+    }
+    return {
+      jitter: Math.round(Math.sqrt(variance / this.filled) * 100) / 100,
+      frameTime: Math.round(mean * 100) / 100,
+    }
+  },
+}
+
+function DynamicLightsHUD({ metrics, count }: { metrics: any, count: number }) {
+  const stats = useRef({ ftSum: 0, jSum: 0, samples: 0 })
+
+  useEffect(() => {
+    stats.current.ftSum += metrics.frameTime
+    stats.current.jSum += metrics.jitter
+    stats.current.samples++
+  }, [metrics])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (stats.current.samples > 0) {
+        const n = stats.current.samples
+        const avgFT = stats.current.ftSum / n
+        const avgJ = stats.current.jSum / n
+        
+        console.log(
+          `%c[5s Avg - Dynamic Lights] FT: ${avgFT.toFixed(2)}ms | Scripting Time: ~0.5ms | Shader Complexity: ${count} Luces | Pixel Fill Rate: ${avgFT.toFixed(2)}ms | Jitter: ${avgJ.toFixed(2)}ms`,
+          'color: #facc15; font-weight: bold;'
+        )
+        
+        stats.current.ftSum = 0
+        stats.current.jSum = 0
+        stats.current.samples = 0
+      }
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [count])
+
+  const jitterColor = metrics.jitter < 1 ? 'text-emerald-400' : metrics.jitter < 3 ? 'text-yellow-400' : 'text-red-400'
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 min-w-[190px]">
+      <div className="bg-black/80 backdrop-blur-xl border border-slate-500/40 px-4 py-3 rounded-xl">
+        <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">Frame Time</p>
+        <p className="text-2xl font-mono font-black text-slate-300">
+          {metrics.frameTime.toFixed(2)}<span className="text-xs text-gray-500 ml-1">ms</span>
+        </p>
+      </div>
+      <div className="bg-black/80 backdrop-blur-xl border border-yellow-500/40 px-4 py-3 rounded-xl">
+        <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">Shader Complexity</p>
+        <p className="text-2xl font-mono font-black text-yellow-400">
+          {count}<span className="text-xs text-gray-500 ml-1">Luces</span>
+        </p>
+      </div>
+      <div className="bg-black/80 backdrop-blur-xl border border-blue-500/40 px-4 py-3 rounded-xl">
+        <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">Pixel Fill Rate (GPU)</p>
+        <p className="text-2xl font-mono font-black text-blue-400">
+          ~{metrics.frameTime.toFixed(2)}<span className="text-xs text-gray-500 ml-1">ms</span>
+        </p>
+      </div>
+      <div className="bg-black/80 backdrop-blur-xl border border-yellow-500/40 px-4 py-3 rounded-xl">
+        <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">Jitter</p>
+        <p className={`text-2xl font-mono font-black ${jitterColor}`}>
+          {metrics.jitter.toFixed(2)}<span className="text-xs text-gray-500 ml-1">ms</span>
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ─── CONFIGURACIÓN DE PARÁMETROS ─────────────────────────────────────────────
+const LIGHT_TYPE_OPTIONS: Record<string, number> = { PointLight: 0, SpotLight: 0, DirectionalLight: 0, HemisphereLight: 0 }
+const LIGHT_RANGES: Record<string, number[]> = { PointLight: [1, 2, 4, 7], SpotLight: [1, 2, 4, 7], DirectionalLight: [1, 2, 4, 7], HemisphereLight: [1, 144, 320] }
+const LIGHT_LABELS: Record<string, string> = { PointLight: 'Point Light', SpotLight: 'Spot Light', DirectionalLight: 'Directional Light', HemisphereLight: 'Hemisphere Light' }
+
+// ─── COMPONENTE PRINCIPAL BABYLON ────────────────────────────────────────────
+export default function DynamicLightsBabylonTest() {
+  const [count, setCount] = useState(1)
+  const [selectedLightType, setSelectedLightType] = useState<string>('PointLight')
+  const [metrics, setMetrics] = useState({ jitter: 0, frameTime: 0 })
+  const [isLoading, setIsLoading] = useState(true)
+  
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [sceneState, setSceneState] = useState<{ scene: Scene, engine: Engine } | null>(null)
+  
+  // Referencias para limpiar y actualizar recursos sin recrear el motor
+  const sceneRef = useRef<BABYLON.Scene | null>(null)
+  const materialsRef = useRef<BABYLON.PBRMaterial[]>([])
+  const shadowCastersRef = useRef<BABYLON.Mesh[]>([])
+  const activeLightsData = useRef<any[]>([])
 
+  // 1. Inicialización Base (Geometría Fija y Motor)
   useEffect(() => {
     if (!canvasRef.current) return
 
-    const canvas = canvasRef.current
-    const engine = new Engine(canvas, true)
-    const scene = new Scene(engine)
-    scene.clearColor = Color4.FromColor3(Color3.FromHexString("#050505"), 1)
+    const engine = new BABYLON.Engine(canvasRef.current, true, { preserveDrawingBuffer: true, stencil: true })
+    const scene = new BABYLON.Scene(engine)
+    scene.clearColor = new BABYLON.Color4(0.02, 0.02, 0.02, 1)
+    sceneRef.current = scene
 
-    const camera = new ArcRotateCamera("camera", 0, Math.PI / 3, 35, Vector3.Zero(), scene)
-    camera.setPosition(new Vector3(0, 20, 35))
-    camera.attachControl(canvas, true)
+    // Cámara equivalente a position [0, 15, 25], fov: 50
+    const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 29.15, BABYLON.Vector3.Zero(), scene)
+    camera.setPosition(new BABYLON.Vector3(0, 15, 25))
+    camera.fov = 50 * (Math.PI / 180)
+    camera.maxZ = 1000
+    // Límite de ángulo polar maxPolarAngle={Math.PI / 2 - 0.05}
+    camera.upperBetaLimit = Math.PI / 2 - 0.05
+    camera.attachControl(canvasRef.current, true)
 
-    const ambientLight = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene)
-    ambientLight.intensity = 0.3
-
-    // Directional Light
-    const dirLight = new DirectionalLight("dirLight", new Vector3(-1, -1, -1), scene)
-    dirLight.position = new Vector3(20, 30, 20)
-    dirLight.intensity = 1.5
-    dirLight.diffuse = Color3.FromHexString("#a5b4fc")
-
-    const shadowGenerator = new ShadowGenerator(2048, dirLight)
-    shadowGenerator.useBlurExponentialShadowMap = true
-    shadowGenerator.blurKernel = 32
-    shadowGenerator.bias = 0.00005 // Adjusted bias
-
-    const shadowGenerators: ShadowGenerator[] = [shadowGenerator]
-
-    // Create a rotating SpotLight Factory
-    const spotLights: { light: SpotLight, speed: number, target: Vector3 }[] = []
-    
-    // rotating spotlights implementation
-    const createSpotlight = (id: string, colorHex: string, speed: number, position: Vector3) => {
-        const spotLight = new SpotLight(id, position, new Vector3(0, -1, 0), Math.PI / 5, 0.5, scene)
-        spotLight.diffuse = Color3.FromHexString(colorHex)
-        spotLight.intensity = 15
-        
-        const spotShadows = new ShadowGenerator(512, spotLight)
-        spotShadows.useBlurExponentialShadowMap = true
-        spotShadows.blurKernel = 16
-        shadowGenerators.push(spotShadows)
-        
-        spotLights.push({ light: spotLight, speed, target: new Vector3(0, 0, 0) })
+    // Helper para PBR Materials
+    const createPBR = (name: string, hexColor: string, roughness: number, metallic: number) => {
+      const mat = new BABYLON.PBRMaterial(name, scene)
+      mat.albedoColor = BABYLON.Color3.FromHexString(hexColor)
+      mat.roughness = roughness
+      mat.metallic = metallic
+      materialsRef.current.push(mat)
+      return mat
     }
 
-    createSpotlight("s1", "#fb7185", 0.5, new Vector3(15, 15, 0))
-    createSpotlight("s2", "#38bdf8", 0.7, new Vector3(-15, 15, 0))
-    createSpotlight("s3", "#34d399", 0.4, new Vector3(0, 15, 15))
-
-    // Moving PointLights
-    const pointLights: { light: PointLight, speed: number, radius: number, initialPos: Vector3 }[] = []
-    
-    for(let i=0; i<30; i++) {
-        const color = Color3.FromHSV((i / 30) * 360, 1, 0.6)
-        const pos = new Vector3((Math.random() - 0.5) * 30, 2 + Math.random() * 5, (Math.random() - 0.5) * 30)
-        
-        const plight = new PointLight(`pl_${i}`, pos.clone(), scene)
-        plight.diffuse = color
-        plight.intensity = 8
-        plight.range = 20
-
-        const sphere = MeshBuilder.CreateSphere(`pls_${i}`, { diameter: 0.4 }, scene)
-        sphere.position = pos.clone()
-        sphere.parent = plight // the sphere follows the light automatically
-        
-        const mat = new StandardMaterial(`plmat_${i}`, scene)
-        mat.emissiveColor = color
-        mat.disableLighting = true
-        sphere.material = mat
-
-        pointLights.push({
-            light: plight,
-            initialPos: pos,
-            speed: 0.2 + Math.random() * 1.5,
-            radius: 2 + Math.random() * 5
-        })
-    }
-
-    // Detailed Floor
-    const ground = MeshBuilder.CreateGround("ground", { width: 100, height: 100, subdivisions: 64 }, scene)
-    ground.position.y = -0.5
-    const groundMat = new StandardMaterial("groundMat", scene)
-    groundMat.diffuseColor = Color3.FromHexString("#101015")
-    groundMat.specularColor = new Color3(0.2, 0.2, 0.2)
-    groundMat.roughness = 0.2
-    ground.material = groundMat
+    // Geometría Estática
+    const ground = BABYLON.MeshBuilder.CreatePlane("ground", { size: 40 }, scene)
+    ground.rotation.x = Math.PI / 2 // Babylon plano rota invertido respecto a R3F
     ground.receiveShadows = true
+    ground.material = createPBR("groundMat", "#111118", 0.4, 0.6)
 
-    // Animal Herd (100)
-    const animalCount = 100
-    
-    // We create an original mesh and instance it to save resources instead of full separate meshes
-    const originalAnimalGroup = new BABYLON.TransformNode("animalGroup", scene)
-    
-    const bodyMat = new StandardMaterial("bodyMat", scene)
-    bodyMat.diffuseColor = Color3.Gray()
-    const headMat = new StandardMaterial("headMat", scene)
-    const earMat = new StandardMaterial("earMat", scene)
-    earMat.diffuseColor = Color3.FromHexString("#c2410c")
-
-    const body = MeshBuilder.CreateBox("body", { width: 1.2, height: 0.8, depth: 1.8 }, scene)
-    body.position = new Vector3(0, 0.5, -0.5)
-    body.material = bodyMat
-    body.setParent(originalAnimalGroup)
-
-    const head = MeshBuilder.CreateBox("head", { size: 1 }, scene)
-    head.position = new Vector3(0, 1, 0.5)
-    head.material = headMat
-    head.setParent(originalAnimalGroup)
-
-    const leftEar = MeshBuilder.CreateCylinder("lear", { diameterBottom: 0.4, diameterTop: 0, height: 0.5, tessellation: 4 }, scene)
-    leftEar.position = new Vector3(-0.3, 0.6, 0)
-    leftEar.material = earMat
-    leftEar.setParent(head)
-
-    const rightEar = MeshBuilder.CreateCylinder("rear", { diameterBottom: 0.4, diameterTop: 0, height: 0.5, tessellation: 4 }, scene)
-    rightEar.position = new Vector3(0.3, 0.6, 0)
-    rightEar.material = earMat
-    rightEar.setParent(head)
-
-    const meshesToAddShadows = [body, head, leftEar, rightEar]
-    
-    // Since instancing with custom colors per instance requires specialized buffer or ThinInstances, 
-    // we just clone them to easily change material colors. In stress testing, 100 clones is fine.
-    originalAnimalGroup.setEnabled(false) // Hide the original
-    
-    for(let i=0; i<animalCount; i++) {
-        const x = (Math.random() - 0.5) * 40
-        const z = (Math.random() - 0.5) * 40
-        const rY = Math.random() * Math.PI * 2
-        const s = 0.8 + Math.random() * 0.5
-
-        const clone = originalAnimalGroup.instantiateHierarchy() as BABYLON.TransformNode
-        clone.position.set(x, 0, z)
-        clone.rotation.set(0, rY, 0)
-        clone.scaling.setAll(s)
-        
-        // Add clones to shadows
-        clone.getChildMeshes(false).forEach(m => {
-            if (m.name.includes("body") || m.name.includes("head")) {
-                const subMat = new StandardMaterial(`animMat_${i}`, scene)
-                subMat.diffuseColor = Color3.FromHSV(Math.random() * 50 + 20, 0.9, 0.5)
-                m.material = subMat
-            }
-            m.receiveShadows = true
-            shadowGenerators.forEach(sg => sg.addShadowCaster(m, false))
-        })
+    const createMesh = (type: string, name: string, pos: number[], args: any, matParams: any) => {
+      let mesh;
+      if (type === 'box') mesh = BABYLON.MeshBuilder.CreateBox(name, args, scene)
+      else if (type === 'sphere') mesh = BABYLON.MeshBuilder.CreateSphere(name, args, scene)
+      else if (type === 'cylinder') mesh = BABYLON.MeshBuilder.CreateCylinder(name, args, scene)
+      
+      if(mesh) {
+        mesh.position.set(pos[0], pos[1], pos[2])
+        mesh.receiveShadows = true
+        mesh.material = createPBR(`${name}Mat`, matParams.c, matParams.r, matParams.m)
+        shadowCastersRef.current.push(mesh)
+      }
     }
 
-    let startTime = performance.now()
+    // 3 Boxes
+    createMesh('box', 'b1', [-4, 1, -4], { width: 2, height: 2, depth: 2 }, { c: "#6366f1", r: 0.4, m: 0.3 })
+    createMesh('box', 'b2', [0, 1.5, -4], { width: 2, height: 3, depth: 2 }, { c: "#8b5cf6", r: 0.4, m: 0.6 })
+    createMesh('box', 'b3', [4, 1, -4], { width: 2, height: 2, depth: 2 }, { c: "#a78bfa", r: 0.4, m: 0.9 })
+
+    // 3 Spheres
+    createMesh('sphere', 's1', [-4, 1, 0], { diameter: 2, segments: 32 }, { c: "#ec4899", r: 0.2, m: 0.5 })
+    createMesh('sphere', 's2', 's2', [0, 1, 0], { diameter: 2, segments: 32 }, { c: "#f43f5e", r: 0.2, m: 0.75 })
+    createMesh('sphere', 's3', 's3', [4, 1, 0], { diameter: 2, segments: 32 }, { c: "#fb7185", r: 0.2, m: 1 })
+
+    // 3 Cylinders
+    createMesh('cylinder', 'c1', [-4, 1.5, 4], { diameter: 1.6, height: 3, tessellation: 32 }, { c: "#06b6d4", r: 0.3, m: 1 })
+    createMesh('cylinder', 'c2', 'c2', [0, 1.5, 4], { diameter: 1.6, height: 3, tessellation: 32 }, { c: "#0ea5e9", r: 0.3, m: 2 })
+    createMesh('cylinder', 'c3', 'c3', [4, 1.5, 4], { diameter: 1.6, height: 3, tessellation: 32 }, { c: "#38bdf8", r: 0.3, m: 3 })
+
+    // Render Loop & Animation de luces CPU
+    let frameCount = 0
+    let lastTime = performance.now()
+    const startAnimTime = performance.now()
+
     scene.onBeforeRenderObservable.add(() => {
-        const t = (performance.now() - startTime) / 1000
+      const now = performance.now()
+      const delta = (now - lastTime) / 1000
+      lastTime = now
 
-        spotLights.forEach(sl => {
-            const time = t * sl.speed
-            sl.target.x = Math.sin(time) * 10
-            sl.target.z = Math.cos(time) * 10
-            sl.light.setDirectionToTarget(sl.target)
-        })
+      metricsCalculator.push(delta)
+      frameCount++
+      
+      if (frameCount === 1) setIsLoading(false)
+      if (frameCount % 10 === 0) setMetrics(metricsCalculator.compute())
 
-        pointLights.forEach(pl => {
-            const time = t * pl.speed
-            pl.light.position.x = pl.initialPos.x + Math.sin(time) * pl.radius
-            pl.light.position.z = pl.initialPos.z + Math.cos(time * 0.8) * pl.radius
-            pl.light.position.y = pl.initialPos.y + Math.sin(time * 1.5) * 2
-        })
+      const t = (now - startAnimTime) * 0.001
+
+      // Animación de luces activas
+      activeLightsData.current.forEach(data => {
+        const { type, light, mesh, index, total, speed } = data
+        const localT = t * speed
+        const angle = (index / total) * Math.PI * 2
+
+        if (type === 'PointLight') {
+          const radius = 8
+          light.position.x = Math.cos(localT + angle) * radius
+          light.position.z = Math.sin(localT + angle) * radius
+          light.position.y = 3 + Math.sin(localT * 1.5 + angle) * 1.5
+          if (mesh) mesh.position.copyFrom(light.position)
+        } 
+        else if (type === 'SpotLight') {
+          const radius = 10
+          light.position.x = Math.cos(localT + angle) * radius
+          light.position.z = Math.sin(localT + angle) * radius
+          light.position.y = 8 + Math.sin(localT * 1.2 + angle) * 2
+          
+          if (mesh) mesh.position.copyFrom(light.position)
+          
+          // Mover objetivo y recalcular dirección
+          const tx = Math.sin(localT * 0.5 + angle) * 2
+          const tz = Math.cos(localT * 0.5 + angle) * 2
+          light.direction = new BABYLON.Vector3(tx - light.position.x, 0 - light.position.y, tz - light.position.z).normalize()
+        } 
+        else if (type === 'DirectionalLight') {
+          light.position.x = Math.cos(localT + angle) * 15
+          light.position.z = Math.sin(localT + angle) * 15
+          light.position.y = 12 + Math.sin(localT * 0.8 + angle) * 4
+          
+          if (mesh) mesh.position.copyFrom(light.position)
+          // Apuntar al centro (0,0,0)
+          light.direction = BABYLON.Vector3.Zero().subtract(light.position).normalize()
+        } 
+        else if (type === 'HemisphereLight') {
+          const hue = (((index / total) * 360 + localT * 20) % 360)
+          // Conversión rápida HSL a RGB en Babylon vía HSV (S=1, V=1)
+          light.diffuse = BABYLON.Color3.FromHSV(hue, 1, 1)
+          light.groundColor = BABYLON.Color3.FromHSV((hue + 180) % 360, 0.8, 0.3)
+        }
+      })
     })
 
     engine.runRenderLoop(() => {
       scene.render()
     })
 
-    setSceneState({ scene, engine })
-
     const handleResize = () => engine.resize()
     window.addEventListener('resize', handleResize)
 
     return () => {
       window.removeEventListener('resize', handleResize)
-      scene.dispose()
       engine.dispose()
     }
-  }, [])
+  }, []) // Solo se ejecuta una vez
+
+  // 2. Lógica Dinámica de Luces (Se ejecuta al cambiar count o selectedLightType)
+  useEffect(() => {
+    const scene = sceneRef.current
+    if (!scene) return
+
+    // Limpiar luces anteriores
+    activeLightsData.current.forEach(data => {
+      if (data.light) data.light.dispose()
+      if (data.mesh) data.mesh.dispose()
+      if (data.shadowGen) data.shadowGen.dispose()
+      if (data.mat) data.mat.dispose()
+    })
+    activeLightsData.current = []
+
+    // Ajustar Límite de PBR Materials para que todas las luces hagan efecto a la vez
+    materialsRef.current.forEach(mat => {
+      mat.maxSimultaneousLights = Math.max(4, count)
+    })
+
+    // Generar nuevas luces
+    for (let i = 0; i < count; i++) {
+      const speed = 0.3 + (i % 5) * 0.1
+      const hue = (i / count) * 360
+      const color = BABYLON.Color3.FromHSV(hue, 1, 1)
+      
+      let light: any
+      let mesh: any
+      let shadowGen: BABYLON.ShadowGenerator | null = null
+      let mat: BABYLON.StandardMaterial | null = null
+
+      if (selectedLightType !== 'HemisphereLight') {
+        mat = new BABYLON.StandardMaterial(`lmat-${i}`, scene)
+        mat.emissiveColor = color
+        mat.disableLighting = true
+      }
+
+      if (selectedLightType === 'PointLight') {
+        light = new BABYLON.PointLight(`pl-${i}`, BABYLON.Vector3.Zero(), scene)
+        light.diffuse = color
+        light.intensity = 10
+        // Sphere visual helper
+        mesh = BABYLON.MeshBuilder.CreateSphere(`pm-${i}`, { diameter: 0.3, segments: 8 }, scene)
+        mesh.material = mat
+        
+        shadowGen = new BABYLON.ShadowGenerator(256, light)
+        shadowGen.bias = 0.001
+
+      } else if (selectedLightType === 'SpotLight') {
+        // En Babylon SpotLight necesita dirección inicial
+        light = new BABYLON.SpotLight(`sl-${i}`, BABYLON.Vector3.Zero(), new BABYLON.Vector3(0, -1, 0), Math.PI / 3, 2, scene)
+        light.diffuse = color
+        light.intensity = 30
+        
+        // Cone visual helper
+        mesh = BABYLON.MeshBuilder.CreateCylinder(`sm-${i}`, { diameterTop: 0, diameterBottom: 0.3, height: 0.3, tessellation: 8 }, scene)
+        mesh.material = mat
+        mesh.rotation.x = Math.PI / 2
+
+        shadowGen = new BABYLON.ShadowGenerator(256, light)
+        shadowGen.bias = 0.001
+        
+      } else if (selectedLightType === 'DirectionalLight') {
+        light = new BABYLON.DirectionalLight(`dl-${i}`, new BABYLON.Vector3(0, -1, 0), scene)
+        light.diffuse = color
+        light.intensity = 1.5
+
+        // Box visual helper
+        mesh = BABYLON.MeshBuilder.CreateBox(`dm-${i}`, { size: 0.25 }, scene)
+        mesh.material = mat
+
+        shadowGen = new BABYLON.ShadowGenerator(256, light)
+        // Orthographic box bounds para la DirectionalLight
+        light.autoUpdateExtends = false
+        light.orthoLeft = -15
+        light.orthoRight = 15
+        light.orthoTop = 15
+        light.orthoBottom = -15
+        shadowGen.bias = 0.001
+        
+      } else if (selectedLightType === 'HemisphereLight') {
+        light = new BABYLON.HemisphericLight(`hl-${i}`, new BABYLON.Vector3(0, 1, 0), scene)
+        light.intensity = 0.8
+      }
+
+      // Añadir caster objects al shadow generator
+      if (shadowGen) {
+        shadowCastersRef.current.forEach(caster => {
+          shadowGen!.addShadowCaster(caster)
+        })
+      }
+
+      activeLightsData.current.push({
+        type: selectedLightType,
+        index: i,
+        total: count,
+        speed,
+        light,
+        mesh,
+        shadowGen,
+        mat
+      })
+    }
+  }, [count, selectedLightType])
+
+  const selectOptions: Record<string, number> = Object.fromEntries(
+    Object.keys(LIGHT_TYPE_OPTIONS).map((key) => [key, key === selectedLightType ? count : 0])
+  )
+
+  const handleLightTypeChange = (key: string) => {
+    setSelectedLightType(key)
+    const newRange = LIGHT_RANGES[key]
+    if (!newRange.includes(count)) {
+      setCount(newRange[0])
+    }
+  }
 
   return (
-    <main className="w-full h-screen bg-[#050505] overflow-hidden relative">
-      <PerformanceOverlay title="ILUMINACIÓN EXHAUSTIVA: Múltiples Luces y Sombras" />
-
-      {sceneState && <DebugTools scene={sceneState.scene} engine={sceneState.engine} />}
-
-      <canvas
-        ref={canvasRef}
-        className="block w-full h-full outline-none touch-none"
+    <main className="relative w-full h-screen bg-[#050505] overflow-hidden">
+      <PerformanceOverlay
+        title={`${count} ${LIGHT_LABELS[selectedLightType]}s Dinámicas (Babylon)`}
+        input={true}
+        count={count}
+        setCount={setCount}
+        inputConfig={{
+          unit: 'normal',
+          type: 'values',
+          values: LIGHT_RANGES[selectedLightType],
+        }}
+        selectOptions={selectOptions}
+        selectedOption={selectedLightType}
+        onSelectChange={handleLightTypeChange}
       />
+      
+      <DynamicLightsHUD metrics={metrics} count={count} />
 
-      <div className="fixed bottom-0 left-0 w-full p-8 text-white/30 text-xs pointer-events-none text-center font-mono z-50">
-        GPU STRESS - DIRECTIONAL + SPOTLIGHTS + POINTLIGHTS + SHADOWS ON COMPLEX GEOMETRIES (BABYLON ENGINE)
+      <div className="absolute inset-0 pointer-events-none z-10">
+        <DebugTools title="Iluminación Dinámica Babylon" entityCount={count} />
+        {isLoading && <Loader3D />}
       </div>
+
+      <canvas 
+        ref={canvasRef} 
+        className="w-full h-full outline-none block" 
+      />
     </main>
   )
 }
