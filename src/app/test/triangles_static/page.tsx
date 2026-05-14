@@ -23,7 +23,7 @@ function hslToRgb(h: number, s: number, l: number) {
 
 export default function TrianglesStaticTest() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [count, setCount] = useState(1000)
+  const [count, setCount] = useState(1024000)
   
   const engineRef = useRef<BABYLON.Engine | null>(null)
   const meshRef = useRef<BABYLON.Mesh | null>(null)
@@ -63,9 +63,8 @@ export default function TrianglesStaticTest() {
         BABYLON.Vector3.Zero(), 
         scene
       )
-      camera.setPosition(new BABYLON.Vector3(20, 20, 20))
+      camera.setPosition(new BABYLON.Vector3(0, 65, 0))
       camera.fov = 50 * (Math.PI / 180)
-      camera.attachControl(canvasRef.current, true)
 
       // Iluminación (equivalente a ambientLight intensity=1)
       const light = new BABYLON.HemisphericLight("ambient", new BABYLON.Vector3(0, 1, 0), scene)
@@ -110,7 +109,7 @@ export default function TrianglesStaticTest() {
         m.sampleFilled = Math.min(m.sampleFilled + 1, 60)
 
         // Console log cada 3 segundos
-        if (now - m.lastLogTime >= 3000) {
+        if (now - m.lastLogTime >= 10_000) {
           m.lastLogTime = now
 
           let jitter = 0
@@ -140,17 +139,33 @@ export default function TrianglesStaticTest() {
           const drawCalls = (engine as any)._drawCalls?.current || 1
           const currentCount = meshRef.current?.thinInstanceCount || 0
 
-          console.log(`[Métricas - 3s Report]
-Entidades: ${currentCount}
-Motor: Babylon.js
-FPS: ${fps.toFixed(2)}
-GPU (ms): ${gpuMs > 0 ? gpuMs.toFixed(2) : 'N/A'}
-CPU (ms): ${cpuMs.toFixed(2)}
-Draw Calls: ${drawCalls}
-RAM (mb): ${ramMb > 0 ? ramMb.toFixed(2) : 'N/A'}
-Frame Time (ms): ${frameTime.toFixed(2)}
-Jitter (ms): ${jitter.toFixed(2)}
-Load Time (ms): ${m.loadTime.toFixed(2)}`)
+          const avgFps = fps
+          const ramMB = ramMb > 0 ? ramMb.toFixed(1) : 'N/A'
+          
+          // Estimación simple de VRAM: (Indices + Posiciones + Colores) * instancias
+          const indicesSize = (meshRef.current?.getTotalIndices() || 0) * 2
+          const vertexSize = (meshRef.current?.getTotalVertices() || 0) * (3 * 4)
+          const thinInstanceSize = currentCount * (16 * 4 + 4 * 4)
+          const vramMB = ((indicesSize + vertexSize + thinInstanceSize) / 1048576).toFixed(2)
+          
+          const triangles = (meshRef.current?.getTotalIndices() || 0) / 3 * currentCount
+
+          console.groupCollapsed(
+            `%c[Babylon Static] ${new Date().toLocaleTimeString()}`,
+            'color:#3b82f6;font-weight:700;font-size:12px',
+          )
+          console.log(`%cFPS Promedio     %c${avgFps.toFixed(1)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+          console.log(`%cGPU (ms/frame)   %c${gpuMs.toFixed(2)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+          console.log(`%cCPU (ms/frame)   %c${cpuMs.toFixed(2)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+          console.log(`%cRAM              %c${ramMB} MB`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+          console.log(`%cVRAM Estimada    %c${vramMB} MB`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+          console.log(`%cDraw Calls       %c${drawCalls}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+          console.log(`%cTriángulos       %c${triangles.toLocaleString()}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+
+          console.log(`%cFrame Time       %c${frameTime.toFixed(2)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+          console.log(`%cJitter           %c${jitter.toFixed(2)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+          console.log(`%cLoad Time        %c${metricsRef.current.loadTime.toFixed(1)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+          console.groupEnd()
         }
       })
 
@@ -219,6 +234,7 @@ Load Time (ms): ${m.loadTime.toFixed(2)}`)
         inputConfig={{
           unit: 'thousands',
           type: 'values',
+          step: 1000,
           values: [1000, 4000, 16000, 64000, 256000, 1024000],
         }}
       />

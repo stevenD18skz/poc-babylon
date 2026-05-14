@@ -35,39 +35,11 @@ const metricsCalculator = {
   },
 }
 
-function PerfMetricsHUD({ metrics }: { metrics: any }) {
-  const jitterColor =
-    metrics.jitter < 1 ? 'text-emerald-400' :
-    metrics.jitter < 3 ? 'text-yellow-400' :
-    'text-red-400'
 
-  return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 min-w-[170px]">
-      <div className="bg-black/80 backdrop-blur-xl border border-slate-500/40 px-4 py-3 rounded-xl">
-        <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">Frame Time</p>
-        <p className="text-2xl font-mono font-black text-slate-300">
-          {metrics.frameTime.toFixed(2)}<span className="text-xs text-gray-500 ml-1">ms</span>
-        </p>
-      </div>
-      <div className="bg-black/80 backdrop-blur-xl border border-orange-500/40 px-4 py-3 rounded-xl">
-        <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">Jitter</p>
-        <p className={`text-2xl font-mono font-black ${jitterColor}`}>
-          {metrics.jitter.toFixed(2)}<span className="text-xs text-gray-500 ml-1">ms</span>
-        </p>
-      </div>
-      <div className="bg-black/80 backdrop-blur-xl border border-blue-500/40 px-4 py-3 rounded-xl">
-        <p className="text-gray-400 text-xs uppercase tracking-widest mb-1">Load Time</p>
-        <p className="text-2xl font-mono font-black text-blue-400">
-          {metrics.loadTime.toFixed(1)}<span className="text-xs text-gray-500 ml-1">ms</span>
-        </p>
-      </div>
-    </div>
-  )
-}
 
 // ─── COMPONENTE PRINCIPAL Y ENTORNO BABYLON ───────────────────────────────────
 export default function BabylonTrianglesRotatingTest() {
-  const [count, setCount] = useState(1024000)
+  const [count, setCount] = useState(512000)
   const [metrics, setMetrics] = useState({ jitter: 0, frameTime: 0, loadTime: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [babylonState, setBabylonState] = useState<{
@@ -88,9 +60,8 @@ export default function BabylonTrianglesRotatingTest() {
 
     // ✅ Misma posición y FOV de cámara
     const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 4, Math.PI / 3, 34.64, BABYLON.Vector3.Zero(), scene)
-    camera.setPosition(new BABYLON.Vector3(20, 20, 20))
+    camera.setPosition(new BABYLON.Vector3(0, 125, 0))
     camera.fov = 50 * (Math.PI / 180)
-    camera.attachControl(canvasRef.current, true)
 
     new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene).intensity = 1
 
@@ -153,11 +124,15 @@ export default function BabylonTrianglesRotatingTest() {
     cone.thinInstanceSetBuffer("matrix", matrixBuffer, 16, false)
     cone.thinInstanceSetBuffer("color", colorBuffer, 4, false)
 
+    const engineInst = new BABYLON.EngineInstrumentation(engine)
+    engineInst.captureGPUFrameTime = true
+
     // ─── LÓGICA DE ACTUALIZACIÓN Y MÉTRICAS ───
     let frameCount = 0
     let startTime = performance.now()
     let loadTime = 0
     let lastTime = performance.now()
+    let lastLogTime = performance.now()
     const startAnimTime = performance.now()
 
     scene.onBeforeRenderObservable.add(() => {
@@ -196,6 +171,47 @@ export default function BabylonTrianglesRotatingTest() {
 
       // Subir el buffer actualizado a la GPU
       cone.thinInstanceBufferUpdated("matrix")
+
+      // Console log cada 10 segundos
+      if (now - lastLogTime >= 10000) {
+        lastLogTime = now
+        
+        const fps = engine.getFps()
+        const computed = metricsCalculator.compute()
+        const frameTime = computed.frameTime
+        const jitter = computed.jitter
+
+        const gpuMs = (engineInst.gpuFrameTimeCounter?.current || 0) / 1000000
+        const cpuMs = Math.max(0, frameTime - gpuMs)
+        
+        const perf = performance as any
+        const ramMb = perf.memory ? perf.memory.usedJSHeapSize / 1048576 : 0
+        const ramMB = ramMb > 0 ? ramMb.toFixed(1) : 'N/A'
+        
+        const indicesSize = (cone.getTotalIndices() || 0) * 2
+        const vertexSize = (cone.getTotalVertices() || 0) * (3 * 4)
+        const thinInstanceSize = count * (16 * 4 + 4 * 4)
+        const vramMB = ((indicesSize + vertexSize + thinInstanceSize) / 1048576).toFixed(2)
+        
+        const drawCalls = (engine as any)._drawCalls?.current || 1
+        const triangles = (cone.getTotalIndices() || 0) / 3 * count
+
+        console.groupCollapsed(
+          `%c[Babylon Rotating] ${new Date().toLocaleTimeString()}`,
+          'color:#3b82f6;font-weight:700;font-size:12px',
+        )
+        console.log(`%cFPS Promedio     %c${fps.toFixed(1)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cGPU (ms/frame)   %c${gpuMs.toFixed(2)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cCPU (ms/frame)   %c${cpuMs.toFixed(2)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cDraw Calls       %c${drawCalls}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cRAM              %c${ramMB} MB`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cVRAM Estimada    %c${vramMB} MB`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cTriángulos       %c${triangles.toLocaleString()}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cFrame Time       %c${frameTime.toFixed(2)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cJitter           %c${jitter.toFixed(2)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cLoad Time        %c${loadTime.toFixed(1)} ms`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.groupEnd()
+      }
     })
 
     engine.runRenderLoop(() => {
@@ -222,17 +238,11 @@ export default function BabylonTrianglesRotatingTest() {
         engine={babylonState.engine}
         scene={babylonState.scene}
       />
-      <PerfMetricsHUD metrics={metrics} />
 
       {/* Interfaz sobre el canvas */}
       <div className="absolute inset-0 pointer-events-none z-10">
         {babylonState.scene && babylonState.engine && (
-          <DebugTools 
-            title="Triángulos Rotando Babylon" 
-            entityCount={count} 
-            scene={babylonState.scene}
-            engine={babylonState.engine}
-          />
+           <p></p>
         )}
         {isLoading && <Loader3D />}
       </div>

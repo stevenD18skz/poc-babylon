@@ -4,6 +4,13 @@ import Link from 'next/link'
 import { useEffect } from 'react'
 import type { Engine, Scene } from '@babylonjs/core'
 
+interface InputConfig {
+  unit?: 'thousands' | 'normal'
+  type?: 'powers' | 'values' | 'linear'
+  step?: number
+  values?: number[]
+}
+
 interface PerformanceOverlayProps {
   title: string
   input?: boolean
@@ -12,6 +19,7 @@ interface PerformanceOverlayProps {
   unit?: 'thousands' | 'normal'
   engine?: Engine | null
   scene?: Scene | null
+  inputConfig?: InputConfig
 }
 
 export default function PerformanceOverlay({
@@ -22,11 +30,13 @@ export default function PerformanceOverlay({
   unit = 'thousands',
   engine,
   scene,
+  inputConfig,
 }: PerformanceOverlayProps) {
   const isThousands = unit === 'thousands'
   const multiplier = isThousands ? 1000 : 1
   const unitLabel = isThousands ? 'TRIS' : 'OBJ'
 
+  /* 
   useEffect(() => {
     if (!engine || !scene) return
 
@@ -79,6 +89,7 @@ export default function PerformanceOverlay({
       }
 
       // Log consolidado cada 3 segundos
+        /*
       console.log(
         `%c[PERFORMANCE METRICS]`,
         'color: #00ff00; font-weight: bold; font-size: 12px;',
@@ -92,11 +103,13 @@ export default function PerformanceOverlay({
           'Triángulos en escena': Math.round(totalTriangles),
         }
       )
+        
     }, 3000)
 
     return () => clearInterval(metricsInterval)
   }, [engine, scene])
-
+  */
+ 
   return (
     <div className="fixed top-0 left-0 w-full h-full pointer-events-none z-50 p-6 flex justify-start items-start text-left">
       {/* Panel Único Consolidado en la Izquierda */}
@@ -157,21 +170,40 @@ export default function PerformanceOverlay({
             </div>
 
             <div className="relative h-6 flex items-center">
-              <input
-                type="range"
-                min="0"
-                max={isThousands ? 12 : 10}
-                step="1"
-                className="w-full accent-blue-500 cursor-pointer h-1 bg-white/10 rounded-full appearance-none hover:bg-white/20 transition-colors"
-                value={Math.log2(count / multiplier)}
-                onChange={(e) => setCount(multiplier * Math.pow(2, Number(e.target.value)))}
-              />
+              {inputConfig?.type === 'values' && inputConfig.values ? (
+                <input
+                  type="range"
+                  min="0"
+                  max={inputConfig.values.length - 1}
+                  step="1"
+                  className="w-full accent-blue-500 cursor-pointer h-1 bg-white/10 rounded-full appearance-none hover:bg-white/20 transition-colors"
+                  value={inputConfig.values.indexOf(count)}
+                  onChange={(e) => {
+                    const val = inputConfig.values![Number(e.target.value)]
+                    if (val !== undefined) setCount(val)
+                  }}
+                />
+              ) : (
+                <input
+                  type="range"
+                  min="0"
+                  max={isThousands ? 12 : 10}
+                  step="1"
+                  className="w-full accent-blue-500 cursor-pointer h-1 bg-white/10 rounded-full appearance-none hover:bg-white/20 transition-colors"
+                  value={Math.log2(count / multiplier)}
+                  onChange={(e) => setCount(multiplier * Math.pow(2, Number(e.target.value)))}
+                />
+              )}
             </div>
 
             <div className="flex justify-between text-[8px] text-white/20 font-black uppercase tracking-widest">
               <span>{isThousands ? 'Low (1K)' : 'Low (1)'}</span>
               <span>Centralized State</span>
-              <span>{isThousands ? 'Ultra (4M)' : 'High (1K)'}</span>
+              <span suppressHydrationWarning>
+                {inputConfig?.type === 'values' && inputConfig.values 
+                  ? `Max (${(inputConfig.values[inputConfig.values.length - 1] / multiplier).toLocaleString()}${isThousands ? 'K' : ''})` 
+                  : (isThousands ? 'Ultra (4M)' : 'High (1K)')}
+              </span>
             </div>
           </div>
         )}
