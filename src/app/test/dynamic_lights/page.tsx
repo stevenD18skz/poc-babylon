@@ -51,11 +51,6 @@ function DynamicLightsHUD({ metrics, count }: { metrics: any, count: number }) {
         const avgFT = stats.current.ftSum / n
         const avgJ = stats.current.jSum / n
 
-        console.log(
-          `%c[5s Avg - Dynamic Lights] FT: ${avgFT.toFixed(2)}ms | Scripting Time: ~0.5ms | Shader Complexity: ${count} Luces | Pixel Fill Rate: ${avgFT.toFixed(2)}ms | Jitter: ${avgJ.toFixed(2)}ms`,
-          'color: #facc15; font-weight: bold;'
-        )
-
         stats.current.ftSum = 0
         stats.current.jSum = 0
         stats.current.samples = 0
@@ -125,14 +120,11 @@ export default function DynamicLightsBabylonTest() {
     scene.clearColor = new BABYLON.Color4(0.02, 0.02, 0.02, 1)
     sceneRef.current = scene
 
-    // Cámara equivalente a position [0, 15, 25], fov: 50
-    const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 3, 29.15, BABYLON.Vector3.Zero(), scene)
-    camera.setPosition(new BABYLON.Vector3(0, 15, 25))
+    // Cámara fija mirando desde arriba hacia el origen
+    const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, 0, 35, BABYLON.Vector3.Zero(), scene)
     camera.fov = 50 * (Math.PI / 180)
     camera.maxZ = 1000
-    // Límite de ángulo polar maxPolarAngle={Math.PI / 2 - 0.05}
-    camera.upperBetaLimit = Math.PI / 2 - 0.05
-    camera.attachControl(canvasRef.current, true)
+    // Sin controles para que quede fija (no llamamos a attachControl)
 
     // Helper para PBR Materials
     const createPBR = (name: string, hexColor: string, roughness: number, metallic: number) => {
@@ -183,6 +175,14 @@ export default function DynamicLightsBabylonTest() {
     let frameCount = 0
     let lastTime = performance.now()
     const startAnimTime = performance.now()
+    let startTime = performance.now()
+    let loadTime = 0
+    let lastLogTime = performance.now()
+    let peakLatency = 0
+    let notified2Min = false
+
+    const engineInst = new BABYLON.EngineInstrumentation(engine)
+    engineInst.captureGPUFrameTime = true
 
     scene.onBeforeRenderObservable.add(() => {
       const now = performance.now()
@@ -191,8 +191,13 @@ export default function DynamicLightsBabylonTest() {
 
       metricsCalculator.push(delta)
       frameCount++
+      
+      if (delta * 1000 > peakLatency) peakLatency = delta * 1000
 
-      if (frameCount === 1) setIsLoading(false)
+      if (frameCount === 1) {
+        loadTime = performance.now() - startTime
+        setIsLoading(false)
+      }
       if (frameCount % 10 === 0) setMetrics(metricsCalculator.compute())
 
       const t = (now - startAnimTime) * 0.001
@@ -239,6 +244,46 @@ export default function DynamicLightsBabylonTest() {
           light.groundColor = BABYLON.Color3.FromHSV((hue + 180) % 360, 0.8, 0.3)
         }
       })
+
+      // Console log cada 5 segundos
+      if (now - lastLogTime >= 5000) {
+        lastLogTime = now
+        
+        const fps = engine.getFps()
+        const computed = metricsCalculator.compute()
+        const frameTime = computed.frameTime
+        const jitter = computed.jitter
+
+        const gpuMs = (engineInst.gpuFrameTimeCounter?.current || 0) / 1000000
+        const cpuMs = Math.max(0, frameTime - gpuMs)
+        
+        const perf = performance as any
+        const ramMb = perf.memory ? perf.memory.usedJSHeapSize / 1048576 : 0
+        const ramMB = ramMb > 0 ? ramMb.toFixed(1) : 'N/A'
+        
+        const vramMB = 'N/A' // No easily tracked for dynamic lights simply in webgl
+
+        console.group(
+          `%c[Babylon Dynamic Lights] ${new Date().toLocaleTimeString()}`,
+          'color:#3b82f6;font-weight:700;font-size:12px',
+        )
+        console.log(`%cFPS              %c${fps.toFixed(1)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cRAM (mb)         %c${ramMB}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cVram (mb)        %c${vramMB}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cCPU (ms)         %c${cpuMs.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cFrame Time (ms)  %c${frameTime.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cJitter (ms)      %c${jitter.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cLoad Time (ms)   %c${loadTime.toFixed(1)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cPico Latencia (10s) %c${peakLatency.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.groupEnd()
+        
+        peakLatency = 0
+      }
+
+      if (!notified2Min && now - startTime >= 120000) {
+        notified2Min = true
+        console.log('%c✅ 2 minutos han pasado en el test de Babylon Dynamic Lights', 'color: #10b981; font-weight: bold; font-size: 14px; padding: 4px;')
+      }
     })
 
     engine.runRenderLoop(() => {
@@ -393,9 +438,6 @@ export default function DynamicLightsBabylonTest() {
         input={true}
         count={count}
         setCount={setCount}
-        
-        
-        
       />
 
       <DynamicLightsHUD metrics={metrics} count={count} />

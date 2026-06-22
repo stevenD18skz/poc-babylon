@@ -79,9 +79,9 @@ const WALL_THICKNESS = 0.5
 
 // ─── COMPONENTE PRINCIPAL BABYLON ────────────────────────────────────────────
 export default function ShadowsStressBabylonTest() {
-  const [count, setCount] = useState(64)
-  const [lightCount, setLightCount] = useState(3)
-  const [isStatic, setIsStatic] = useState(true)
+  const [count, setCount] = useState(16384)
+  const [lightCount, setLightCount] = useState(2)
+  const [isStatic, setIsStatic] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [metrics, setMetrics] = useState({ 
     jitter: 0, frameTime: 0, fps: 0, cpuTime: 0, gpuTime: 0, drawCalls: 0, triangles: 0, ram: 0 
@@ -109,10 +109,10 @@ export default function ShadowsStressBabylonTest() {
     sceneInstrumentation.captureDrawCalls = true
     engineInstrumentation.captureGPUFrameTime = true // Depende de la extensión EXT_disjoint_timer_query_webgl2
 
-    // Cámara equivalente a position [0, 60, 0] y fov 60
+    // Cámara fija equivalente a position [0, 60, 0] y fov 60
     const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, 0.01, 65, BABYLON.Vector3.Zero(), scene)
     camera.fov = 60 * (Math.PI / 180)
-    camera.attachControl(canvasRef.current, true)
+    // Sin controles para que quede fija (no llamamos a attachControl)
 
     new BABYLON.HemisphericLight("ambient", new BABYLON.Vector3(0, 1, 0), scene).intensity = 0.3
 
@@ -175,6 +175,11 @@ export default function ShadowsStressBabylonTest() {
     // Loop de Renderizado y recolección de métricas
     let frameCount = 0
     let lastTime = performance.now()
+    let startTime = performance.now()
+    let loadTime = 0
+    let lastLogTime = performance.now()
+    let peakLatency = 0
+    let notified2Min = false
 
     scene.onBeforeRenderObservable.add(() => {
       const now = performance.now()
@@ -184,7 +189,12 @@ export default function ShadowsStressBabylonTest() {
       metricsCalculator.push(delta)
       frameCount++
 
-      if (frameCount === 1) setIsLoading(false)
+      if (delta * 1000 > peakLatency) peakLatency = delta * 1000
+
+      if (frameCount === 1) {
+        loadTime = performance.now() - startTime
+        setIsLoading(false)
+      }
 
       // Actualizar Métricas cada 10 frames
       if (frameCount % 10 === 0) {
@@ -205,6 +215,89 @@ export default function ShadowsStressBabylonTest() {
           triangles: scene.getActiveIndices() / 3,
           ram: ramMB
         })
+      }
+
+      // Console log cada 5 segundos
+      if (now - lastLogTime >= 5000) {
+        lastLogTime = now
+        const fps = engine.getFps()
+        const computed = metricsCalculator.compute()
+        const frameTime = computed.frameTime
+        const jitter = computed.jitter
+
+        const gpuMs = engineInstrumentation.gpuFrameTimeCounter?.current 
+          ? engineInstrumentation.gpuFrameTimeCounter.current * 0.000001
+          : 0
+
+        const cpuMs = Math.max(0, frameTime - gpuMs)
+        
+        const memoryInfo = (performance as any).memory
+        const ramMBLog = memoryInfo ? (memoryInfo.usedJSHeapSize / 1048576).toFixed(1) : 'N/A'
+        const vramMB = 'N/A'
+        const currentLightCount = activeLightsRef.current.length
+
+        console.group(
+          `%c[Babylon Shadows Stress] ${new Date().toLocaleTimeString()}`,
+          'color:#3b82f6;font-weight:700;font-size:12px',
+        )
+        console.log(`%cLuces            %c${currentLightCount}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cMotor            %cBabylon`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cFPS              %c${fps.toFixed(1)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cRAM (mb)         %c${ramMBLog}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cVRAM (mb)        %c${vramMB}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cCPU (ms)         %c${cpuMs.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cFrame Time (ms)  %c${frameTime.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cJitter (ms)      %c${jitter.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cLoad Time (ms)   %c${loadTime.toFixed(1)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cPico Latencia (10s) %c${peakLatency.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.groupEnd()
+        
+        peakLatency = 0
+      }
+
+      
+
+      // Console log cada 5 segundos
+      if (now - lastLogTime >= 5000) {
+        lastLogTime = now
+        const fps = engine.getFps()
+        const computed = metricsCalculator.compute()
+        const frameTime = computed.frameTime
+        const jitter = computed.jitter
+
+        const gpuMs = engineInstrumentation.gpuFrameTimeCounter?.current 
+          ? engineInstrumentation.gpuFrameTimeCounter.current * 0.000001
+          : 0
+
+        const cpuMs = Math.max(0, frameTime - gpuMs)
+        
+        const memoryInfo = (performance as any).memory
+        const ramMBLog = memoryInfo ? (memoryInfo.usedJSHeapSize / 1048576).toFixed(1) : 'N/A'
+        const vramMB = 'N/A'
+        const currentLightCount = activeLightsRef.current.length
+
+        console.group(
+          `%c[Babylon Shadows Stress] ${new Date().toLocaleTimeString()}`,
+          'color:#3b82f6;font-weight:700;font-size:12px',
+        )
+        console.log(`%cLuces            %c${currentLightCount}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cMotor            %cBabylon`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cFPS              %c${fps.toFixed(1)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cRAM (mb)         %c${ramMBLog}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cVRAM (mb)        %c${vramMB}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cCPU (ms)         %c${cpuMs.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cFrame Time (ms)  %c${frameTime.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cJitter (ms)      %c${jitter.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cLoad Time (ms)   %c${loadTime.toFixed(1)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.log(`%cPico Latencia (10s) %c${peakLatency.toFixed(2)}`, 'color:#94a3b8', 'color:#f1f5f9;font-weight:600')
+        console.groupEnd()
+        
+        peakLatency = 0
+      }
+
+      if (!notified2Min && now - startTime >= 120000) {
+        notified2Min = true
+        console.log('%c✅ 2 minutos han pasado en el test de Babylon Shadows Stress', 'color: #10b981; font-weight: bold; font-size: 14px; padding: 4px;')
       }
     })
 
