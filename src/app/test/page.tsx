@@ -29,6 +29,13 @@ export default function TestDashboard() {
       description: 'Prueba de carga sobre GPU con mapeo de sombras dinámicas y shaders.',
       path: '/test/dynamic_lights',
       icon: '💡'
+    }, 
+    {
+      id: 'shadows_stress',
+      title: 'Estrés de Sombras',
+      description: 'Prueba intensiva de GPU procesando múltiples fuentes de luz y sombras superpuestas.',
+      path: '/test/shadows_stress',
+      icon: '🌗'
     },
     {
       id: 'raycasting',
@@ -59,20 +66,6 @@ export default function TestDashboard() {
       icon: '🪨'
     },
     {
-      id: 'vram_stress',
-      title: 'Estrés de Memoria',
-      description: 'Prueba de estrés de VRAM mediante el procesamiento de texturas en tiempo real.',
-      path: '/test/vram_stress',
-      icon: '💽'
-    },
-    {
-      id: 'shadows_stress',
-      title: 'Estrés de Sombras',
-      description: 'Prueba intensiva de GPU procesando múltiples fuentes de luz y sombras superpuestas.',
-      path: '/test/shadows_stress',
-      icon: '🌗'
-    },
-    {
       id: 'materials_stress',
       title: 'Materiales PBR Complejos',
       description: 'Evalúa el impacto de materiales físicos avanzados como vidrio, refracción y clearcoat.',
@@ -85,7 +78,15 @@ export default function TestDashboard() {
       description: 'Mide la carga de la GPU al aplicar pases de efectos como Bloom, SSAO, Ruido y Viñeta.',
       path: '/test/postprocessing_stress',
       icon: '🎬'
-    }
+    },
+    {
+      id: 'draw_calls',
+      title: 'Draw Calls',
+      description: 'Prueba de estrés de VRAM mediante el procesamiento de texturas en tiempo real.',
+      path: '/test/draw_calls',
+      icon: '💽'
+    },
+
   ];
 
   return (
